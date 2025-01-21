@@ -6,6 +6,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
+  "type": "module",
   "keywords": [],
   "author": "",
   "license": "ISC",
