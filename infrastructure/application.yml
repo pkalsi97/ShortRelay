@@ -233,10 +233,10 @@ Resources:
             ExpirationInDays: !Ref TransportExpiryDays
       NotificationConfiguration:
         QueueConfigurations:
-          - Event: s3:ObjectCreated:Post
-            Queue: !GetAtt PreprocessingQueue.Arn
+          - Event: s3:ObjectCreated:POST
+            Queue: !GetAtt UploadEventQueue.Arn
     DependsOn:
-      - TransportStorageToPreprocessingQueuePermission
+      - TransportStorageToUploadEventQueuePermission
   TransportStorageBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -258,7 +258,7 @@ Resources:
   ContentStorage:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${AWS::StackName}-contentst-${AWS::AccountId}
+      BucketName: !Sub ${AWS::StackName}-content-${AWS::AccountId}
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -269,9 +269,7 @@ Resources:
         RestrictPublicBuckets: true
       NotificationConfiguration:
         QueueConfigurations:
-          - Event: s3:ObjectCreated:*
-            Queue: !GetAtt CompletionQueue.Arn
-          - Event: s3:ObjectRemoved:*
+          - Event: s3:ObjectCreated:POST
             Queue: !GetAtt CompletionQueue.Arn
     DependsOn:
       - ContentStorageToCompletionQueuePermission
@@ -315,7 +313,6 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref AppId
-
   # -----------------------------------------------------------------------------------------------------------------------
   # LAMBDA
   # -----------------------------------------------------------------------------------------------------------------------
@@ -327,8 +324,8 @@ Resources:
       CodeUri: ./dist
       Handler: handlers/identity-management-handler.identityHandler
       Runtime: nodejs18.x
-      MemorySize: 1024
-      Timeout: 60
+      MemorySize: 2048
+      Timeout: 120
       Tracing: Active
       Architectures:
         - arm64
@@ -429,12 +426,296 @@ Resources:
         Variables:
           TRANSPORTSTORAGE_BUCKET_NAME: !Ref TransportStorage
           TRANSPORTSTORAGE_BUCKET_ARN: !GetAtt TransportStorage.Arn
+  # Event Handler Lambda Function
+  EventHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Manages s3 Event notifications
+      CodeUri: ./dist
+      Handler: handlers/event-handler.eventHandler
+      Runtime: nodejs18.x
+      MemorySize: 2024
+      Timeout: 120
+      Tracing: Active
+      Architectures:
+        - arm64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXrayWriteOnlyAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataStorage
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt TaskQueue.QueueName
+      Events:
+        UploadEventQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt UploadEventQueue.Arn
+            BatchSize: 5
+            MaximumBatchingWindowInSeconds: 15
+      Environment:
+        Variables:
+          METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
+          METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+          TASKQUEUE_QUEUE_NAME: !GetAtt TaskQueue.QueueName
+          TASKQUEUE_QUEUE_ARN: !GetAtt TaskQueue.Arn
+          TASKQUEUE_QUEUE_URL: !Ref TaskQueue
+  # Task Handler
+  TaskHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Task Manager
+      CodeUri: ./dist
+      Handler: handlers/task-handler.taskHandler
+      Runtime: nodejs18.x
+      MemorySize: 2024
+      Timeout: 60
+      Tracing: Active
+      Architectures:
+        - arm64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXrayWriteOnlyAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataStorage
+      Events:
+        TaskQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TaskQueue.Arn
+            BatchSize: 1
+      Environment:
+        Variables:
+          METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
+          METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+  # Completion Handler
+  CompletionHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Completion Handler
+      CodeUri: ./dist
+      Handler: handlers/completion-handler.completionHandler
+      Runtime: nodejs18.x
+      MemorySize: 2024
+      Timeout: 120
+      Tracing: Active
+      Architectures:
+        - arm64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXrayWriteOnlyAccess
+      Events:
+        CompletionQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt CompletionQueue.Arn
+            BatchSize: 5
+            MaximumBatchingWindowInSeconds: 5
+  # -----------------------------------------------------------------------------------------------------------------------
+  # QUEUE
+  # -----------------------------------------------------------------------------------------------------------------------
+  UploadEventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AppId}-UploadEventQueue
+      MessageRetentionPeriod: 345600
+      VisibilityTimeout: 120
+      DelaySeconds: 15
+  TransportStorageToUploadEventQueuePermission:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt UploadEventQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:s3:::${AWS::StackName}-transport-${AWS::AccountId}
+      Queues:
+        - !Ref UploadEventQueue
 
+  TaskQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AppId}-TaskQueue
+      MessageRetentionPeriod: 345600
+      VisibilityTimeout: 60
+      DelaySeconds: 5
+
+  CompletionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AppId}-CompletionQueue
+      MessageRetentionPeriod: 345600
+      VisibilityTimeout: 120
+      DelaySeconds: 15
+  ContentStorageToCompletionQueuePermission:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt CompletionQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt ContentStorage.Arn
+      Queues:
+        - !Ref CompletionQueue
+  # -----------------------------------------------------------------------------------------------------------------------
+  # NETWORK
+  # -----------------------------------------------------------------------------------------------------------------------
+  # VPC
+  WorkerVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref WorkerVPC
+      InternetGatewayId: !Ref InternetGateway
+  # Public Subnet
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    DependsOn: WorkerVPC
+    Properties:
+      VpcId: !Ref WorkerVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  # Route Table
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref WorkerVPC
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn:
+      - AttachGateway
+      - InternetGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # Security Group
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Fargate workers
+      VpcId: !Ref WorkerVPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  # VPC Endpoints
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    DependsOn:
+      - TransportStorage
+      - ContentStorage
+    Properties:
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcId: !Ref WorkerVPC
+      RouteTableIds:
+        - !Ref PublicRouteTable
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+            Resource:
+              - !Sub arn:aws:s3:::${TransportStorage}/*
+              - !Sub arn:aws:s3:::${ContentStorage}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  DynamoDBEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    DependsOn:
+      - MetadataStorage
+    Properties:
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
+      VpcId: !Ref WorkerVPC
+      RouteTableIds:
+        - !Ref PublicRouteTable
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  # -----------------------------------------------------------------------------------------------------------------------
+  # METADATA
+  # -----------------------------------------------------------------------------------------------------------------------  
 Metadata:
   AWS::Composer::Groups:
     Group:
-      Label: Storage
+      Label: Object Storage
       Members:
         - TransportStorage
         - ContentStorage
+    Group2:
+      Label: Metadata Storage
+      Members:
         - MetadataStorage
+    Group3:
+      Label: Network
+      Members:
+        - WorkerSecurityGroup
+        - S3Endpoint
+        - DynamoDBEndpoint
+        - PublicSubnet
