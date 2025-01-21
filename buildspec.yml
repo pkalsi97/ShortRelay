@@ -11,8 +11,8 @@ phases:
     commands:
       - echo "Starting build..."
       - npm run build
-      - cp infrastructure/application.yml dist/backend
-      - aws cloudformation package --template-file infrastructure/application.yml --s3-bucket $S3_BUCKET --output-template-file template-export.yml
+      - cp infrastructure/application.yml .
+      - aws cloudformation package --template-file application.yml --s3-bucket $S3_BUCKET --output-template-file template-export.yml
       
   post_build:
     commands:
