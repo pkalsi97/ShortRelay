@@ -332,7 +332,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Authentication & Authorization
-      CodeUri: ./dist
+      CodeUri: ./dist/backend
       Handler: handlers/identity-management-handler.identityHandler
       Runtime: nodejs18.x
       MemorySize: 2048
@@ -389,7 +389,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Upload Management
-      CodeUri: ./dist
+      CodeUri: ./dist/backend
       Handler: handlers/upload-handler.uploadHandler
       Runtime: nodejs18.x
       MemorySize: 1024
@@ -442,7 +442,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Manages s3 Event notifications
-      CodeUri: ./dist
+      CodeUri: ./dist/backend
       Handler: handlers/event-handler.eventHandler
       Runtime: nodejs18.x
       MemorySize: 2024
@@ -476,7 +476,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Task Manager
-      CodeUri: ./dist
+      CodeUri: ./dist/backend
       Handler: handlers/task-handler.taskHandler
       Runtime: nodejs18.x
       MemorySize: 2024
@@ -518,7 +518,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Completion Handler
-      CodeUri: ./dist
+      CodeUri: ./dist/backend
       Handler: handlers/completion-handler.completionHandler
       Runtime: nodejs18.x
       MemorySize: 2024
