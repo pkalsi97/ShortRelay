@@ -7,6 +7,7 @@ export enum ErrorName {
     InternalError = 'InternalServerError',
     ValidationError = 'ValidationError',
     BadRequestError = 'BadRequestError',
+    UploadError = 'UploadServiceError'
 }
 
 interface ClientResponse {
