@@ -13,7 +13,7 @@ import {
     GetUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 
-interface AuthConfig {
+export interface AuthConfig {
     userPoolId: string;
     clientId: string;
     region: string;
