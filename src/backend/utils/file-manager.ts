@@ -6,15 +6,15 @@ import * as path from 'path';
 
 import type { GetObjectCommandOutput } from '@aws-sdk/client-s3';
 
-const writeFile = async (basePath:string,object: GetObjectCommandOutput['Body']): Promise<string> => {
+const writeFile = async (basePath:string, object: GetObjectCommandOutput['Body']): Promise<string> => {
     const fileName = crypto.randomUUID();
-    const filePath = path.join(basePath,fileName);
+    const filePath = path.join(basePath, fileName);
 
     const writeStream = fs.createWriteStream(filePath);
     const bytes = await object!.transformToByteArray();
     const readable = Readable.from(Buffer.from(bytes), { objectMode: false });
 
-    await pipeline(readable,writeStream);
+    await pipeline(readable, writeStream);
     return filePath;
 };
 

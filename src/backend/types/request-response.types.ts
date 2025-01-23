@@ -9,5 +9,5 @@ export interface Request {
         authorization?: string;
         'x-access-token'?: string;
     };
-    body?:Record<string,unknown>;
+    body?:Record<string, unknown>;
 }

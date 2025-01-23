@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-import { CustomError, ErrorName, Fault} from '../utils/error-handling';
+import { CustomError, ErrorName, Fault } from '../utils/error-handling';
 
 export interface KeyOwner {
     userId: string;
@@ -25,13 +25,13 @@ const getOwner = (key: string): KeyOwner => {
     return { userId, assetId };
 };
 
-const getUploadKey = (userId:string):string=>{
+const getUploadKey = (userId:string):string => {
     const timestamp: number = Date.now();
     const uniqueId: string = crypto.randomUUID();
     const hash: string = crypto.createHash('sha256')
         .update(`${userId}-${timestamp}-${uniqueId}`)
         .digest('hex')
-        .substring(0,32);
+        .substring(0, 32);
 
     return `${userId}/${hash}`;
 };

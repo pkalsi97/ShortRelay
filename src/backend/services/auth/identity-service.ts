@@ -24,35 +24,35 @@ let cognitoConfig:AuthConfig;
 
 const initialize = (config:AuthConfig): void => {
     cognitoConfig = config;
-    cognitoClient = new CognitoIdentityProviderClient({region:config.region});
+    cognitoClient = new CognitoIdentityProviderClient({ region: config.region });
 };
 
-const createUser = async (email:string,password:string):Promise<boolean> =>{
+const createUser = async (email:string, password:string):Promise<boolean> => {
     const createUserCommand = new SignUpCommand({
         ClientId: cognitoConfig.clientId,
         Username: email,
         Password: password,
-        UserAttributes:[
+        UserAttributes: [
             {
-                Name:'email',
-                Value:email,
+                Name: 'email',
+                Value: email,
             },
         ],
     });
 
     const createUserResponse = await cognitoClient.send(createUserCommand);
-    if(!createUserResponse.UserSub) {
+    if (!createUserResponse.UserSub) {
         return false;
     }
 
     const adminUpdateUserAttributeResponse = await adminUpdateUserAttribute(email);
-    if(!adminUpdateUserAttributeResponse){
+    if (!adminUpdateUserAttributeResponse){
         await adminDeleteUser(email);
         return false;
     }
 
     const confirmUserResponse = await adminConfirmUser(email);
-    if(!confirmUserResponse){
+    if (!confirmUserResponse){
         await adminDeleteUser(email);
         return false;
     }
@@ -96,13 +96,13 @@ const adminConfirmUser = async (email:string):Promise<boolean> => {
     return response.$metadata.httpStatusCode===200;
 };
 
-const login = async (email:string,password:string):Promise<InitiateAuthCommandOutput['AuthenticationResult']> => {
+const login = async (email:string, password:string):Promise<InitiateAuthCommandOutput['AuthenticationResult']> => {
     const command = new InitiateAuthCommand({
         ClientId: cognitoConfig.clientId,
-        AuthFlow:'USER_PASSWORD_AUTH',
-        AuthParameters:{
-            USERNAME:email,
-            PASSWORD:password,
+        AuthFlow: 'USER_PASSWORD_AUTH',
+        AuthParameters: {
+            USERNAME: email,
+            PASSWORD: password,
         },
     });
 
@@ -120,15 +120,15 @@ const forgetPassword = async (email:string): Promise<ForgotPasswordCommandOutput
     return response.CodeDeliveryDetails;
 };
 
-const confirmForgetPassword = async (email:string,password:string,answer:string):Promise<boolean> => {
+const confirmForgetPassword = async (email:string, password:string, answer:string):Promise<boolean> => {
     const command = new ConfirmForgotPasswordCommand({
         ClientId: cognitoConfig.clientId,
-        Username:email,
-        ConfirmationCode:answer,
-        Password:password,
+        Username: email,
+        ConfirmationCode: answer,
+        Password: password,
     });
     const response = await cognitoClient.send(command);
-    if(response.$metadata.httpStatusCode!==200) {
+    if (response.$metadata.httpStatusCode!==200) {
         return false;
     }
     return true;
@@ -136,7 +136,7 @@ const confirmForgetPassword = async (email:string,password:string,answer:string)
 
 const logout = async (accessToken:string):Promise<boolean> => {
     const command = new GlobalSignOutCommand({
-        AccessToken:accessToken,
+        AccessToken: accessToken,
     });
     const response = await cognitoClient.send(command);
     return response.$metadata.httpStatusCode === 200;
@@ -146,7 +146,7 @@ const refreshToken = async (refreshToken:string):Promise<InitiateAuthCommandOutp
     const command = new InitiateAuthCommand({
         AuthFlow: 'REFRESH_TOKEN_AUTH',
         ClientId: cognitoConfig.clientId,
-        AuthParameters:{
+        AuthParameters: {
             REFRESH_TOKEN: refreshToken,
         },
     });
@@ -157,7 +157,7 @@ const refreshToken = async (refreshToken:string):Promise<InitiateAuthCommandOutp
 
 const getUser = async (accessToken:string):Promise<string> => {
     const command = new GetUserCommand({
-        AccessToken:accessToken,
+        AccessToken: accessToken,
     });
 
     const response = await cognitoClient.send(command);

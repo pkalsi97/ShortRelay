@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-import { Task,Location,TaskType, WorkerType } from '../types/task.type';
+import { Task, Location, TaskType, WorkerType } from '../types/task.type';
 
 const createTask = (
     userId: string,
@@ -9,7 +9,7 @@ const createTask = (
     output: Location,
     type: TaskType,
     worker: WorkerType,
-): Task =>{
+): Task => {
     return {
         taskId: `${type}-${crypto.randomUUID()}`,
         userId,

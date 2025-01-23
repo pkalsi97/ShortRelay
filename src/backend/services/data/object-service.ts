@@ -1,11 +1,6 @@
 import * as fs from 'fs';
 
-import {
-    S3Client,
-    GetObjectCommand,
-    DeleteObjectCommand,
-    GetObjectCommandOutput,
-} from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, DeleteObjectCommand, GetObjectCommandOutput } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 
 export interface ObjectServiceConfig {
@@ -18,7 +13,7 @@ let s3Client:S3Client;
 
 const initialize = (config:ObjectServiceConfig): void => {
     objectServiceConfig = config;
-    s3Client = new S3Client({region:objectServiceConfig.region});
+    s3Client = new S3Client({ region: objectServiceConfig.region });
 };
 
 const getObject = async (key:string):Promise<GetObjectCommandOutput['Body']> => {
@@ -29,7 +24,7 @@ const getObject = async (key:string):Promise<GetObjectCommandOutput['Body']> => 
     return (await s3Client.send(command)).Body;
 };
 
-const uploadObject = async (object:fs.ReadStream,key:string):Promise<boolean> => {
+const uploadObject = async (object:fs.ReadStream, key:string):Promise<boolean> => {
     const upload = new Upload({
         client: s3Client,
         params: {
@@ -46,7 +41,7 @@ const uploadObject = async (object:fs.ReadStream,key:string):Promise<boolean> =>
 const deleteObject = async (key:string):Promise<boolean> => {
     const command = new DeleteObjectCommand({
         Bucket: objectServiceConfig.bucket,
-        Key:key,
+        Key: key,
     });
 
     const response = await s3Client.send(command);

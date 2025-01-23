@@ -3,26 +3,21 @@ import { promisify } from 'util';
 
 import ffmpeg, { FfprobeData, FfprobeStream } from 'fluent-ffmpeg';
 
-import {
-    TechnicalMetadata,
-    QualityMetrics,
-    ContentMetadata,
-    ContentMetadataResult,
-} from '../../types/metadata.types';
+import { TechnicalMetadata, QualityMetrics, ContentMetadata, ContentMetadataResult } from '../../types/metadata.types';
 
 const ffprobeAsync = promisify<string, FfprobeData>(ffmpeg.ffprobe);
 
 const getContentMetadata = async (filePath: string): Promise<ContentMetadataResult> => {
-    const [technicalMetadata,qualityMetrics,contentMetadata] = await Promise.all([
+    const [technicalMetadata, qualityMetrics, contentMetadata] = await Promise.all([
         extractTechnicalMetadata(filePath),
         extractQualityMetrics(filePath),
         extractContentMetadata(filePath),
     ]);
 
-    return{
-        technical:technicalMetadata,
-        quality:qualityMetrics,
-        content:contentMetadata,
+    return {
+        technical: technicalMetadata,
+        quality: qualityMetrics,
+        content: contentMetadata,
     };
 };
 

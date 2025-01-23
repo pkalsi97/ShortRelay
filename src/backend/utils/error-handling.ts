@@ -34,11 +34,11 @@ interface AWSServiceError {
 export const exceptionHandlerFunction = (error: unknown): ClientResponse => {
 
     const clientResponse: ClientResponse = {
-        statusCode:(error as AWSServiceError)?.$response?.statusCode || 500,
-        name:(error as Error)?.name || ErrorName.InternalError,
-        message:(error as Error)?.message || 'An unknown error occurred',
-        fault:(error as AWSServiceError)?.$fault === 'client' ? Fault.CLIENT : Fault.SERVER,
-        retryable:(error as AWSServiceError)?.$retryable || false,
+        statusCode: (error as AWSServiceError)?.$response?.statusCode || 500,
+        name: (error as Error)?.name || ErrorName.InternalError,
+        message: (error as Error)?.message || 'An unknown error occurred',
+        fault: (error as AWSServiceError)?.$fault === 'client' ? Fault.CLIENT : Fault.SERVER,
+        retryable: (error as AWSServiceError)?.$retryable || false,
     };
 
     if (error instanceof CustomError) {
@@ -56,8 +56,11 @@ export const exceptionHandlerFunction = (error: unknown): ClientResponse => {
 
 export class CustomError extends Error {
     public name: ErrorName;
+
     public statusCode: number;
+
     public fault: Fault;
+
     public retryable: boolean;
 
     public constructor(

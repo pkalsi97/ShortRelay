@@ -1,8 +1,8 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 import { AuthConfig, IdentityService } from '../services/auth/identity-service';
-import { Request,Response } from '../types/request-response.types';
-import {Fault,CustomError,ErrorName,exceptionHandlerFunction} from '../utils/error-handling';
+import { Request, Response } from '../types/request-response.types';
+import { Fault, CustomError, ErrorName, exceptionHandlerFunction } from '../utils/error-handling';
 import { ValidationField, ValidationResponse, RequestValidator } from '../utils/request-validator';
 
 const ROUTES = {
@@ -10,7 +10,7 @@ const ROUTES = {
     LOGIN: '/v1/auth/login',
     LOGOUT: '/v1/auth/logout',
     FORGET_PASSWORD: '/v1/auth/forget-password',
-    FORGET_PASSWORD_CONFIRM:'/v1/auth/forget-password/confirm',
+    FORGET_PASSWORD_CONFIRM: '/v1/auth/forget-password/confirm',
     SESSION_REFRESH: '/v1/auth/session/refresh',
 } as const;
 
@@ -31,21 +31,21 @@ IdentityService.initialize(authConfig);
 */
 
 const signupFunc = async (request: Request): Promise<Response> => {
-    const validationResult:ValidationResponse = RequestValidator.validate(request,[
+    const validationResult:ValidationResponse = RequestValidator.validate(request, [
         ValidationField.RequestBody,
         ValidationField.Email,
         ValidationField.Password,
     ]);
 
     if (!validationResult.success){
-        throw new CustomError (ErrorName.ValidationError,validationResult.message,400,Fault.CLIENT,true);
+        throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
     }
 
     const { email, password } = request.body!;
 
-    const createUserResponse = await IdentityService.createUser(email as string ,password as string);
+    const createUserResponse = await IdentityService.createUser(email as string, password as string);
     if (!createUserResponse){
-        throw new CustomError (ErrorName.InternalError,'Signup Failed,Try Again Later!',500,Fault.SERVER,true);
+        throw new CustomError(ErrorName.InternalError, 'Signup Failed,Try Again Later!', 500, Fault.SERVER, true);
     }
 
     return {
@@ -62,21 +62,21 @@ const signupFunc = async (request: Request): Promise<Response> => {
 */
 
 const loginFunc= async (request: Request): Promise<Response> => {
-    const validationResult: ValidationResponse = RequestValidator.validate(request,[
+    const validationResult: ValidationResponse = RequestValidator.validate(request, [
         ValidationField.RequestBody,
         ValidationField.Email,
         ValidationField.Password,
     ]);
 
     if (!validationResult.success){
-        throw new CustomError (ErrorName.ValidationError,validationResult.message,400,Fault.CLIENT,true);
+        throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
     }
 
     const { email, password } = request.body!;
 
-    const loginResponse = await IdentityService.login(email as string,password as string);
+    const loginResponse = await IdentityService.login(email as string, password as string);
     if (!loginResponse){
-        throw new CustomError(ErrorName.InternalError,'Login failed, Try again',401,Fault.CLIENT,true);
+        throw new CustomError(ErrorName.InternalError, 'Login failed, Try again', 401, Fault.CLIENT, true);
     }
 
     return {
@@ -93,13 +93,13 @@ const loginFunc= async (request: Request): Promise<Response> => {
 */
 
 const logoutFunc = async (request: Request): Promise<Response> => {
-    const validationResult: ValidationResponse = RequestValidator.validate(request,[
+    const validationResult: ValidationResponse = RequestValidator.validate(request, [
         ValidationField.RequestHeaders,
         ValidationField.AccessToken,
     ]);
 
     if (!validationResult.success){
-        throw new CustomError (ErrorName.ValidationError,validationResult.message,400,Fault.CLIENT,true);
+        throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
     }
 
     const accessToken = request.headers?.['x-access-token'];
@@ -120,26 +120,26 @@ const logoutFunc = async (request: Request): Promise<Response> => {
 */
 
 const forgetPasswordFunc = async (request: Request): Promise<Response> => {
-    const validationResult:ValidationResponse = RequestValidator.validate(request,[
+    const validationResult:ValidationResponse = RequestValidator.validate(request, [
         ValidationField.RequestBody,
         ValidationField.Email,
     ]);
 
     if (!validationResult.success){
-        throw new CustomError (ErrorName.ValidationError,validationResult.message,400,Fault.CLIENT,true);
+        throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
     }
 
     const { email } = request.body!;
 
     const forgetPasswordResponse = await IdentityService.forgetPassword(email as string);
     if (!forgetPasswordResponse) {
-        throw new CustomError(ErrorName.InternalError,'Unable to reset Password',500,Fault.SERVER,false);
+        throw new CustomError(ErrorName.InternalError, 'Unable to reset Password', 500, Fault.SERVER, false);
     }
 
     return {
         success: true,
         message: 'Reset code sent successfully',
-        data:forgetPasswordResponse,
+        data: forgetPasswordResponse,
     };
 };
 
@@ -152,7 +152,7 @@ const forgetPasswordFunc = async (request: Request): Promise<Response> => {
 */
 
 const confirmForgetPasswordFunc = async (request: Request): Promise<Response> => {
-    const validationResult:ValidationResponse = RequestValidator.validate(request,[
+    const validationResult:ValidationResponse = RequestValidator.validate(request, [
         ValidationField.RequestBody,
         ValidationField.Email,
         ValidationField.Password,
@@ -160,7 +160,7 @@ const confirmForgetPasswordFunc = async (request: Request): Promise<Response> =>
     ]);
 
     if (!validationResult.success){
-        throw new CustomError(ErrorName.ValidationError,validationResult.message,400,Fault.CLIENT,true);
+        throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
     }
 
     const { email, answer, password } = request.body!;
@@ -170,8 +170,8 @@ const confirmForgetPasswordFunc = async (request: Request): Promise<Response> =>
         password as string,
         answer as string,
     );
-    if(!confirmForgetPasswordResponse) {
-        throw new CustomError(ErrorName.InternalError,'Password Reset Failed',500,Fault.SERVER,false);
+    if (!confirmForgetPasswordResponse) {
+        throw new CustomError(ErrorName.InternalError, 'Password Reset Failed', 500, Fault.SERVER, false);
     }
 
     return {
@@ -187,25 +187,25 @@ const confirmForgetPasswordFunc = async (request: Request): Promise<Response> =>
 */
 
 const refreshSessionFunc = async (request: Request): Promise<Response> => {
-    const validationResult:ValidationResponse = RequestValidator.validate(request,[
+    const validationResult:ValidationResponse = RequestValidator.validate(request, [
         ValidationField.RequestBody,
         ValidationField.RefreshToken,
     ]);
 
     if (!validationResult.success){
-        throw new CustomError(ErrorName.ValidationError,validationResult.message,400,Fault.CLIENT,true);
+        throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
     }
 
     const { refreshToken } = request.body!;
     const sessionRefreshResponse = await IdentityService.refreshToken(refreshToken as string);
     if (!sessionRefreshResponse){
-        throw new CustomError(ErrorName.InternalError,'Session Refresh Failed',500,Fault.SERVER,false);
+        throw new CustomError(ErrorName.InternalError, 'Session Refresh Failed', 500, Fault.SERVER, false);
     }
 
     return {
         success: true,
         message: 'Session Refresh Successful',
-        data:sessionRefreshResponse,
+        data: sessionRefreshResponse,
     };
 };
 
@@ -224,7 +224,7 @@ export const identityHandler = async(event: APIGatewayProxyEvent): Promise<APIGa
         const executionFunction = executionFunctionMap[path];
 
         if (!executionFunction) {
-            throw new CustomError(ErrorName.InternalError,`No Function Mapping Found For ${path}`,404,Fault.CLIENT,true);
+            throw new CustomError(ErrorName.InternalError, `No Function Mapping Found For ${path}`, 404, Fault.CLIENT, true);
         }
 
         const request: Request = {
@@ -249,12 +249,12 @@ export const identityHandler = async(event: APIGatewayProxyEvent): Promise<APIGa
     } catch (error) {
         const errorResponse = exceptionHandlerFunction(error);
         return {
-            statusCode:errorResponse.statusCode,
-            body:JSON.stringify({
-                success:false,
-                message:errorResponse.message,
-                body:{},
-                error:errorResponse,
+            statusCode: errorResponse.statusCode,
+            body: JSON.stringify({
+                success: false,
+                message: errorResponse.message,
+                body: {},
+                error: errorResponse,
             }),
         };
     }

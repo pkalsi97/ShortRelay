@@ -1,13 +1,6 @@
-import {
-    PutItemCommand,
-    DynamoDBClient,
-    UpdateItemCommand,
-} from '@aws-sdk/client-dynamodb';
+import { PutItemCommand, DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 
-import {
-    AssetRecord,
-    createInitialRecord,
-} from '../../types/asset-record.types';
+import { AssetRecord, createInitialRecord } from '../../types/asset-record.types';
 
 export enum ProcessingStage {
     UPLOAD = 'upload',
@@ -25,18 +18,18 @@ export interface DbConfig {
 let dbConfig:DbConfig;
 let dbClient:DynamoDBClient;
 
-const initialize = (config:DbConfig): void =>{
+const initialize = (config:DbConfig): void => {
     dbConfig = config;
-    dbClient = new DynamoDBClient({region:config.region});
+    dbClient = new DynamoDBClient({ region: config.region });
 };
 
-const initializeRecord = async (userId:string,assetId:string): Promise<boolean> => {
-    const item: AssetRecord = createInitialRecord(userId,assetId);
+const initializeRecord = async (userId:string, assetId:string): Promise<boolean> => {
+    const item: AssetRecord = createInitialRecord(userId, assetId);
 
     const command = new PutItemCommand({
         TableName: dbConfig.table,
-        Item:item,
-        ConditionExpression:'attribute_not_exists(userId) AND attribute_not_exists(assetId)',
+        Item: item,
+        ConditionExpression: 'attribute_not_exists(userId) AND attribute_not_exists(assetId)',
     });
 
     const response = await dbClient.send(command);
@@ -69,7 +62,7 @@ const updateProgress = async (
     return response.$metadata.httpStatusCode === 200;
 };
 
-const markCriticalFailure = async ( userId: string, assetId: string, value: boolean): Promise<boolean> =>{
+const markCriticalFailure = async ( userId: string, assetId: string, value: boolean): Promise<boolean> => {
     const command = new UpdateItemCommand({
         TableName: dbConfig.table,
         Key: {

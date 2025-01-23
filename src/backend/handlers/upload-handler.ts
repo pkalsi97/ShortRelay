@@ -2,8 +2,8 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 import { AuthConfig, IdentityService } from '../services/auth/identity-service';
 import { UploadConfig, UploadService } from '../services/data/upload-service';
-import { Request,Response } from '../types/request-response.types';
-import {Fault,CustomError,ErrorName,exceptionHandlerFunction} from '../utils/error-handling';
+import { Request, Response } from '../types/request-response.types';
+import { Fault, CustomError, ErrorName, exceptionHandlerFunction } from '../utils/error-handling';
 import {  KeyService } from '../utils/key-service';
 import { ValidationField, ValidationResponse, RequestValidator } from '../utils/request-validator';
 
@@ -21,8 +21,8 @@ const authConfig: AuthConfig = {
 const uploadConfig: UploadConfig = {
     region: process.env.AWS_DEFAULT_REGION!,
     bucket: process.env.TRANSPORTSTORAGE_BUCKET_NAME!,
-    uploadSizeLimit: parseInt(process.env.UPLOAD_SIZE_LIMIT!,10),
-    uploadTimeLimit: parseInt(process.env.UPLOAD_TIME_LIMIT!,10),
+    uploadSizeLimit: parseInt(process.env.UPLOAD_SIZE_LIMIT!, 10),
+    uploadTimeLimit: parseInt(process.env.UPLOAD_TIME_LIMIT!, 10),
 };
 
 IdentityService.initialize(authConfig);
@@ -36,13 +36,13 @@ UploadService.initialize(uploadConfig);
  */
 
 const uploadRequestFunc = async (request:Request):Promise<Response> => {
-    const validationResult:ValidationResponse = RequestValidator.validate(request,[
+    const validationResult:ValidationResponse = RequestValidator.validate(request, [
         ValidationField.RequestHeaders,
         ValidationField.AccessToken,
     ]);
 
     if (!validationResult.success){
-        throw new CustomError (ErrorName.ValidationError,validationResult.message,400,Fault.CLIENT,true);
+        throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
     }
 
     const token = request.headers?.['x-access-token'];
@@ -50,15 +50,15 @@ const uploadRequestFunc = async (request:Request):Promise<Response> => {
     const userId = await IdentityService.getUser(accessToken);
     const key = KeyService.getUploadKey(userId);
 
-    const uploadServiceResponse = await UploadService.generatePreSignedPost(userId,key);
+    const uploadServiceResponse = await UploadService.generatePreSignedPost(userId, key);
     if (!uploadServiceResponse){
-        throw new CustomError(ErrorName.UploadError,'Upload Service is down!',503,Fault.SERVER,true);
+        throw new CustomError(ErrorName.UploadError, 'Upload Service is down!', 503, Fault.SERVER, true);
     }
 
     return {
-        success:true,
+        success: true,
         message: 'Upload url successfully generated!',
-        data:uploadServiceResponse,
+        data: uploadServiceResponse,
     };
 };
 
@@ -66,16 +66,16 @@ const executionFunctionMap: Record<string, (request: Request) => Promise<Respons
     [ROUTES.UPLOAD_REQUEST]: uploadRequestFunc,
 };
 
-export const uploadHandler = async(event:APIGatewayProxyEvent): Promise<APIGatewayProxyResult> =>{
-    try{
+export const uploadHandler = async(event:APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    try {
         const path = event.path;
         const executionFunction = executionFunctionMap[path];
         if (!executionFunction) {
-            throw new CustomError(ErrorName.InternalError,`No Function Mapping Found For ${path}`,404,Fault.CLIENT,true);
+            throw new CustomError(ErrorName.InternalError, `No Function Mapping Found For ${path}`, 404, Fault.CLIENT, true);
         }
 
         const request : Request = {
-            headers:{
+            headers: {
                 ...(event.headers.Authorization || event.headers.authorization) && {
                     authorization: event.headers.Authorization || event.headers.authorization,
                 },
@@ -89,19 +89,19 @@ export const uploadHandler = async(event:APIGatewayProxyEvent): Promise<APIGatew
         const response = await executionFunction(request);
 
         return {
-            statusCode:200,
+            statusCode: 200,
             body: JSON.stringify(response),
         };
 
     } catch (error){
         const errorResponse = exceptionHandlerFunction(error);
         return {
-            statusCode:errorResponse.statusCode,
-            body:JSON.stringify({
-                success:false,
-                message:errorResponse.message,
-                body:{},
-                error:errorResponse,
+            statusCode: errorResponse.statusCode,
+            body: JSON.stringify({
+                success: false,
+                message: errorResponse.message,
+                body: {},
+                error: errorResponse,
             }),
         };
     }

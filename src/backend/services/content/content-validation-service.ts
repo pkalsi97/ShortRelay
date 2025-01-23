@@ -16,7 +16,7 @@ const SUPPORTED_AUDIO_CODECS = ['aac', 'mp3', 'opus'];
 
 const ffprobeAsync = promisify<string, FfprobeData>(ffmpeg.ffprobe);
 
-const getDefaultResult = (exists:boolean,stats?:fs.Stats):BasicValidationResult => {
+const getDefaultResult = (exists:boolean, stats?:fs.Stats):BasicValidationResult => {
     return {
         exists,
         sizeInBytes: stats?.size || 0,
@@ -39,7 +39,7 @@ const validateStreams = async(filePath: string): Promise<StreamValidationResult>
 
     try {
         metadata = await ffprobeAsync(filePath);
-    } catch{
+    } catch {
         return {
             hasVideoStream: false,
             hasAudioStream: false,
@@ -160,7 +160,7 @@ const validateContent = async (filePath:string): Promise <ContentValidationResul
         }
     }
 
-    return{
+    return {
         success,
         error,
         basic,
