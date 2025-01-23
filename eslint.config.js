@@ -47,6 +47,24 @@ export default [
             'comma-dangle': ['error', 'always-multiline'],
             'eol-last': ['error', 'always'],
             'no-trailing-spaces': 'error',
+            "object-curly-spacing": ["error", "always"],
+            "comma-spacing": ["error", { "before": false, "after": true }],
+            "array-bracket-spacing": ["error", "never"],
+            "arrow-spacing": ["error", { "before": true, "after": true }],
+            "block-spacing": ["error", "always"],
+            "func-call-spacing": ["error", "never"],
+            "key-spacing": ["error", { 
+                "beforeColon": false, 
+                "afterColon": true 
+            }],
+            "keyword-spacing": ["error", { 
+                "before": true, 
+                "after": true 
+            }],
+            "line-comment-position": ["error", { 
+                "position": "above" 
+            }],
+            "lines-between-class-members": ["error", "always"],
             'max-len': ['error', {
                 code: 120,
                 ignoreComments: true,
