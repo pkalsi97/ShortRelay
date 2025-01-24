@@ -12,8 +12,6 @@ phases:
     commands:
       - echo "Starting build..."
       - npm run build
-      - pwd
-      - ls -R dist
       - cp ../infrastructure/backend.yml .
       - aws cloudformation package --template-file backend.yml --s3-bucket $S3_BUCKET --output-template-file template-export.yml
       
@@ -29,4 +27,4 @@ artifacts:
     - dist/**/*
     - package.json
     - package-lock.json
-  base-directory: .
+  base-directory:  backend
