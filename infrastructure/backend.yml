@@ -474,6 +474,8 @@ Resources:
   # Task Handler
   TaskHandler:
     Type: AWS::Serverless::Function
+    DependsOn: 
+      - TaskQueue
     Properties:
       Description: Task Manager
       CodeUri: ./dist/handlers
@@ -685,9 +687,6 @@ Resources:
   # VPC Endpoints
   S3Endpoint:
     Type: AWS::EC2::VPCEndpoint
-    DependsOn:
-      - TransportStorage
-      - ContentStorage
     Properties:
       ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
       VpcId: !Ref WorkerVPC
@@ -711,8 +710,6 @@ Resources:
           Value: !Ref AppId
   DynamoDBEndpoint:
     Type: AWS::EC2::VPCEndpoint
-    DependsOn:
-      - MetadataStorage
     Properties:
       ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
       VpcId: !Ref WorkerVPC
@@ -929,10 +926,7 @@ Resources:
   ProcessorTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     DependsOn:
-      - ProcessorTaskRole
       - TaskExecutionRole
-      - WorkerRepository
-      - WorkerClusterLogGroup
     Properties:
       Family: !Sub ${AppId}-processor
       RequiresCompatibilities:
@@ -983,10 +977,7 @@ Resources:
   HelperTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     DependsOn:
-      - HelperTaskRole
       - TaskExecutionRole
-      - WorkerRepository
-      - WorkerClusterLogGroup
     Properties:
       Family: !Sub ${AppId}-helper
       RequiresCompatibilities:
