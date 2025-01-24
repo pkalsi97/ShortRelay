@@ -442,7 +442,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Manages s3 Event notifications
-      CodeUri: ./dist/backend
+      CodeUri: ./dist/handlers
       Handler: event-handler.eventHandler
       Runtime: nodejs18.x
       MemorySize: 2024
