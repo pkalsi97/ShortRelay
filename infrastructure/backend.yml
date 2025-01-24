@@ -773,7 +773,7 @@ Resources:
         - Key: Project
           Value: !Ref AppId
   WorkerRepositoryPolicy:
-    Type: AWS::ECR::RepositoryPolicy
+    Type: AWS::ECR::RegistryPolicy
     Properties:
       RepositoryName: !Ref WorkerRepository
       PolicyText:
