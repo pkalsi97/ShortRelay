@@ -767,23 +767,23 @@ Resources:
               }
             ]
           }
-    RepositoryPolicyText:
-      Version: '2012-10-17'
-      Statement:
-        - Sid: AllowPullPush
-          Effect: Allow
-          Principal:
-            Service:
-              - ecs-tasks.amazonaws.com
-              - ecr.amazonaws.com
-          Action:
-            - ecr:GetDownloadUrlForLayer
-            - ecr:BatchGetImage
-            - ecr:BatchCheckLayerAvailability
-            - ecr:PutImage
-            - ecr:InitiateLayerUpload
-            - ecr:UploadLayerPart
-            - ecr:CompleteLayerUpload
+      RepositoryPolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowPullPush
+            Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+                - ecr.amazonaws.com
+            Action:
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+              - ecr:BatchCheckLayerAvailability
+              - ecr:PutImage
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
 
   ProcessorTaskRole:
     Type: AWS::IAM::Role
