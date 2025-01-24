@@ -289,8 +289,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Upload Management
-      CodeUri: ./dist/handlers
-      Handler: upload-handler.uploadHandler
+      CodeUri: ./dist
+      Handler: handlers/upload-handler.uploadHandler
       Runtime: nodejs18.x
       MemorySize: 1024
       Timeout: 60
@@ -341,8 +341,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Manages s3 Event notifications
-      CodeUri: ./dist/handlers
-      Handler: event-handler.eventHandler
+      CodeUri: ./dist
+      Handler: handlers/event-handler.eventHandler
       Runtime: nodejs18.x
       MemorySize: 2024
       Timeout: 120
@@ -374,8 +374,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Task Manager
-      CodeUri: ./dist/handlers
-      Handler: task-handler.taskHandler
+      CodeUri: ./dist
+      Handler: handlers/task-handler.taskHandler
       Runtime: nodejs18.x
       MemorySize: 1024
       Timeout: 60
@@ -401,8 +401,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Completion Handler
-      CodeUri: ./dist/handlers
-      Handler: completion-handler.completionHandler
+      CodeUri: ./dist
+      Handler: handlers/completion-handler.completionHandler
       Runtime: nodejs18.x
       MemorySize: 2048
       Timeout: 120
