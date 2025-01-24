@@ -446,7 +446,7 @@ Resources:
             ExpirationInDays: !Ref TransportExpiryDays
       NotificationConfiguration:
         QueueConfigurations:
-          - Event: s3:ObjectCreated:POST
+          - Event: s3:ObjectCreated:Post
             Queue: !GetAtt UploadEventQueue.Arn
     DependsOn:
       - TransportStorageToUploadEventQueuePermission
@@ -481,7 +481,7 @@ Resources:
         RestrictPublicBuckets: true
       NotificationConfiguration:
         QueueConfigurations:
-          - Event: s3:ObjectCreated:POST
+          - Event: s3:ObjectCreated:Post
             Queue: !GetAtt CompletionQueue.Arn
     DependsOn:
       - ContentStorageToCompletionQueuePermission
