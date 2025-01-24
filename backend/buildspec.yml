@@ -4,6 +4,7 @@ phases:
     runtime-versions:
       nodejs: 18
     commands:
+      - cd backend
       - echo "Installing project dependencies..."
       - npm install --quiet
       
@@ -11,18 +12,18 @@ phases:
     commands:
       - echo "Starting build..."
       - npm run build
-      - cp infrastructure/application.yml .
-      - aws cloudformation package --template-file application.yml --s3-bucket $S3_BUCKET --output-template-file template-export.yml
+      - cp ../infrastructure/backend.yml .
+      - aws cloudformation package --template-file backend.yml --s3-bucket $S3_BUCKET --output-template-file template-export.yml
       
   post_build:
     commands:
       - rm -rf node_modules
-      - npm prune --omit=dev --quiet     
-
+      - npm prune --omit=dev --quiet
+      - rm -rf dist/workers/*
 artifacts:
   files:
     - template-export.yml
     - dist/**/*
     - package.json
     - package-lock.json
-  base-directory: .
+  base-directory: backend
