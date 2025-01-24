@@ -243,6 +243,11 @@ export const identityHandler = async(event: APIGatewayProxyEvent): Promise<APIGa
 
         return {
             statusCode: 200,
+            headers: {
+                'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,
+                'Access-Control-Allow-Methods': 'OPTIONS,POST',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Access-Token',
+            },
             body: JSON.stringify(response),
         };
 
@@ -250,6 +255,11 @@ export const identityHandler = async(event: APIGatewayProxyEvent): Promise<APIGa
         const errorResponse = exceptionHandlerFunction(error);
         return {
             statusCode: errorResponse.statusCode,
+            headers: {
+                'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,
+                'Access-Control-Allow-Methods': 'OPTIONS,POST',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Access-Token',
+            },
             body: JSON.stringify({
                 success: false,
                 message: errorResponse.message,

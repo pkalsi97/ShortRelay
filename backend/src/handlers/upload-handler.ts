@@ -90,6 +90,11 @@ export const uploadHandler = async(event:APIGatewayProxyEvent): Promise<APIGatew
 
         return {
             statusCode: 200,
+            headers: {
+                'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,
+                'Access-Control-Allow-Methods': 'OPTIONS,POST',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Access-Token',
+            },
             body: JSON.stringify(response),
         };
 
@@ -97,6 +102,11 @@ export const uploadHandler = async(event:APIGatewayProxyEvent): Promise<APIGatew
         const errorResponse = exceptionHandlerFunction(error);
         return {
             statusCode: errorResponse.statusCode,
+            headers: {
+                'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,
+                'Access-Control-Allow-Methods': 'OPTIONS,POST',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Access-Token',
+            },
             body: JSON.stringify({
                 success: false,
                 message: errorResponse.message,
