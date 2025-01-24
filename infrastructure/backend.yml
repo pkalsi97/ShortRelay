@@ -13,6 +13,7 @@ Globals:
         UPLOAD_SIZE_LIMIT: !Ref UploadSizeLimit
         UPLOAD_TIME_LIMIT: !Ref UploadTimeLimit
         TRANSPORTSTORAGE_BUCKET_NAME: !Ref TransportStorage
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
     LoggingConfig:
       ApplicationLogLevel: WARN
       LogFormat: JSON
@@ -26,7 +27,7 @@ Globals:
     EndpointConfiguration: REGIONAL
     TracingEnabled: true
     Cors:
-      AllowOrigin: '''*'''
+      AllowOrigin: !Sub '''${AllowedOrigin}'''
       AllowHeaders: '''Content-Type, Authorization, X-Access-Token'''
       AllowMethods: '''POST'''
       MaxAge: 5
@@ -56,6 +57,9 @@ Parameters:
     Description: Upload Time Limit for preSignedPost
   TransportExpiryDays:
     Type: Number
+    Description: File Expiry Days for Transport
+  AllowedOrigin:
+    Type: String
     Description: File Expiry Days for Transport
   Environment:
     Type: String
