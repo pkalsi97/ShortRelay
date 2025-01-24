@@ -232,8 +232,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Authentication & Authorization
-      CodeUri: ./dist/handlers
-      Handler: identity-management-handler.identityHandler
+      CodeUri: ./dist
+      Handler: handlers/identity-management-handler.identityHandler
       Runtime: nodejs18.x
       MemorySize: 2048
       Timeout: 120
@@ -930,20 +930,33 @@ Resources:
   # -----------------------------------------------------------------------------------------------------------------------
 Metadata:
   AWS::Composer::Groups:
-    Group:
-      Label: Processing Pipeline
-      Members:
-        - TransportStorage
-        - ContentStorage
-        - CompletionQueue
-        - UploadEventQueue
-        - EventHandler
-        - CompletionHandler
-        - TaskQueue
-        - TaskHandler
-        - MetadataStorage
     Group2:
       Label: Authentication & Authorization
       Members:
         - UserPoolClient
         - UserPool
+    Group:
+      Label: Processing Pipeline
+      Members:
+        - ContentStorage
+        - TransportStorage
+        - CompletionQueue
+        - UploadEventQueue
+        - CompletionHandler
+        - EventHandler
+        - TaskQueue
+        - TaskHandler
+        - MetadataStorage
+    Group3:
+      Label: Network Stack
+      Members:
+        - WorkerSecurityGroup
+        - PublicSubnet
+        - S3Endpoint
+        - DynamoDBEndpoint
+    Group4:
+      Label: Workers
+      Members:
+        - WorkerCluster
+        - ProcessorTaskDefinition
+        - WorkerRepository
