@@ -387,6 +387,16 @@ Resources:
         - AWSXrayWriteOnlyAccess
         - DynamoDBCrudPolicy:
             TableName: !Ref MetadataStorage
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ecs:RunTask
+                - ecs:StopTask
+                - ecs:DescribeTasks
+                - ecs:ListTasks
+              Resource:
+                - !Ref ProcessorTaskDefinition
+                - !GetAtt WorkerCluster.Arn
       Events:
         TaskQueue:
           Type: SQS
@@ -397,6 +407,11 @@ Resources:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+          ECS_CLUSTER: !Ref WorkerCluster
+          PROCESSOR_TASK_DEFINITION: !Ref ProcessorTaskDefinition
+          SUBNET_ID: !Ref PublicSubnet
+          SECURITY_GROUP_ID: !Ref WorkerSecurityGroup
+          VPC_ID: !Ref WorkerVPC
   CompletionHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -702,6 +717,223 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref AppId
+  # -----------------------------------------------------------------------------------------------------------------------
+  # COMPUTE
+  # -----------------------------------------------------------------------------------------------------------------------
+  # Worker Cluster
+  WorkerCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${AppId}-worker-cluster
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE_SPOT
+          Weight: 1
+      Configuration:
+        ExecuteCommandConfiguration:
+          Logging: DEFAULT
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  # Worker Repository
+  WorkerRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub ${AppId}-worker
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep only last 2 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 2
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  WorkerRepositoryPolicy:
+    Type: AWS::ECR::RepositoryPolicy
+    Properties:
+      RepositoryName: !Ref WorkerRepository
+      PolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowPullPush
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action:
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+              - ecr:BatchCheckLayerAvailability
+              - ecr:PutImage
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+  ProcessorTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ProcessorAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !GetAtt TransportStorage.Arn
+                  - !Sub ${TransportStorage.Arn}/*
+                  - !GetAtt ContentStorage.Arn
+                  - !Sub ${ContentStorage.Arn}/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt MetadataStorage.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt WorkerClusterLogGroup.Arn
+              - Effect: Allow
+                Action:
+                  - ecs:ListTasks
+                  - ecs:DescribeTasks
+                  - ecs:ListContainerInstances
+                Resource: !GetAtt WorkerCluster.Arn
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ECRAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+        - PolicyName: ECSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                  - ecs:StopTask
+                  - ecs:DescribeTasks
+                Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  ProcessorTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn:
+      - TaskExecutionRole
+    Properties:
+      Family: !Sub ${AppId}-processor
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: '8192'
+      Memory: '16384'
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ProcessorTaskRole.Arn
+      ContainerDefinitions:
+        - Name: processor
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${WorkerRepository}:latest
+          Essential: true
+          Memory: 16384
+          MemoryReservation: 15360
+          Cpu: 8192
+          Environment:
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: ENVIRONMENT
+              Value: !Ref Environment
+            - Name: TRANSPORT_BUCKET
+              Value: !Ref TransportStorage
+            - Name: CONTENT_BUCKET
+              Value: !Ref ContentStorage
+            - Name: METADATA_TABLE
+              Value: !Ref MetadataStorage
+            - Name: FFMPEG_THREADS
+              Value: '8'
+            - Name: FFMPEG_THREAD_QUEUE_SIZE
+              Value: '512'
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - exit 0
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref WorkerClusterLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: processor
+              awslogs-create-group: true
+              mode: non-blocking
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  # -----------------------------------------------------------------------------------------------------------------------
+  # Metadata
+  # -----------------------------------------------------------------------------------------------------------------------
 Metadata:
   AWS::Composer::Groups:
     Group:
