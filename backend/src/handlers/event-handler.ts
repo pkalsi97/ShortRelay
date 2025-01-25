@@ -2,7 +2,8 @@
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { SQSEvent, SQSBatchResponse, SQSBatchItemFailure, S3Event } from 'aws-lambda';
 
-import { DbConfig, ProcessingStage, MetadataService } from '../services/data/metadata-service';
+import { ProcessingStage, MetadataService } from '../services/data/metadata-service';
+import { DbConfig } from '../types/db.types';
 import { TaskType, WorkerType, Task, Location } from '../types/task.type';
 import { CustomError, Fault, ErrorName, exceptionHandlerFunction } from '../utils/error-handling';
 import { KeyOwner, KeyService } from '../utils/key-service';
