@@ -14,6 +14,7 @@ Globals:
         UPLOAD_TIME_LIMIT: !Ref UploadTimeLimit
         TRANSPORTSTORAGE_BUCKET_NAME: !Ref TransportStorage
         ALLOWED_ORIGIN: !Ref AllowedOrigin
+        AES_KEY_UTIL: !Ref AesKeyUtil
     LoggingConfig:
       ApplicationLogLevel: WARN
       LogFormat: JSON
@@ -60,7 +61,10 @@ Parameters:
     Description: File Expiry Days for Transport
   AllowedOrigin:
     Type: String
-    Description: File Expiry Days for Transport
+    Description: CORS Allowed Origin
+  AesKeyUtil: 
+    Type: String
+    Description: AES Key of length - 32
   Environment:
     Type: String
     Description: Deployment Environment
@@ -248,6 +252,8 @@ Resources:
         - AWSLambdaBasicExecutionRole
         - AmazonCognitoPowerUser
         - AWSXrayWriteOnlyAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AuthCache
       Events:
         AuthAPIsPOSTv1authsignup:
           Type: Api
@@ -288,6 +294,8 @@ Resources:
       Environment:
         Variables:
           CLIENT_ID: !Ref UserPoolClient
+          AUTHCACHE_TABLE_NAME: !Ref AuthCache
+          AUTHCACHE_TABLE_ARN: !GetAtt AuthCache.Arn
   # Upload Handler Lambda Function
   UploadHandler:
     Type: AWS::Serverless::Function
@@ -929,16 +937,29 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref AppId
+  AuthCache:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      DeletionProtectionEnabled: true
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
   # -----------------------------------------------------------------------------------------------------------------------
   # Metadata
   # -----------------------------------------------------------------------------------------------------------------------
 Metadata:
   AWS::Composer::Groups:
-    Group2:
-      Label: Authentication & Authorization
-      Members:
-        - UserPoolClient
-        - UserPool
     Group:
       Label: Processing Pipeline
       Members:
@@ -964,3 +985,9 @@ Metadata:
         - WorkerCluster
         - ProcessorTaskDefinition
         - WorkerRepository
+    Group2:
+      Label: Authentication & Authorization
+      Members:
+        - UserPoolClient
+        - AuthCache
+        - UserPool
