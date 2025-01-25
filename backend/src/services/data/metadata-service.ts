@@ -1,6 +1,7 @@
 import { PutItemCommand, DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 
 import { AssetRecord, createInitialRecord } from '../../types/asset-record.types';
+import { DbConfig } from '../../types/db.types';
 
 export enum ProcessingStage {
     UPLOAD = 'upload',
@@ -9,10 +10,6 @@ export enum ProcessingStage {
     TRANSCODING = 'transcoding',
     COMPLETION = 'completion',
     DISTRIBUTION = 'distribution'
-}
-export interface DbConfig {
-    table:string;
-    region:string;
 }
 
 let dbConfig:DbConfig;
