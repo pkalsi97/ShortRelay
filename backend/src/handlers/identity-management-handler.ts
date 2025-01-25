@@ -1,7 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 import { AuthConfig, IdentityService } from '../services/auth/identity-service';
+import { CacheFieldType, AuthCacheService } from '../services/data/auth-cache-service';
+import { DbConfig } from '../types/db.types';
 import { Request, Response } from '../types/request-response.types';
+import { EncryptionConfig, EncryptionService } from '../utils/encryption-service';
 import { Fault, CustomError, ErrorName, exceptionHandlerFunction } from '../utils/error-handling';
 import { ValidationField, ValidationResponse, RequestValidator } from '../utils/request-validator';
 
@@ -14,6 +17,12 @@ const ROUTES = {
     SESSION_REFRESH: '/v1/auth/session/refresh',
 } as const;
 
+const CORS_HEADERS = {
+    'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,
+    'Access-Control-Allow-Methods': 'OPTIONS,POST',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Access-Token',
+} as const;
+
 // Initialize
 const authConfig: AuthConfig = {
     userPoolId: process.env.USER_POOL_ID!,
@@ -21,7 +30,18 @@ const authConfig: AuthConfig = {
     region: process.env.AWS_DEFAULT_REGION!,
 };
 
+const dbConfig: DbConfig = {
+    table: process.env.AUTHCACHE_TABLE_NAME!,
+    region: process.env.AWS_DEFAULT_REGION!,
+};
+
+const encryptionConfig: EncryptionConfig = {
+    key: process.env.AES_KEY_UTIL!,
+};
+
 IdentityService.initialize(authConfig);
+AuthCacheService.initialize(dbConfig);
+EncryptionService.initialize(encryptionConfig);
 
 /**
  * signupFunc expects
@@ -44,6 +64,7 @@ const signupFunc = async (request: Request): Promise<Response> => {
     const { email, password } = request.body!;
 
     const createUserResponse = await IdentityService.createUser(email as string, password as string);
+
     if (!createUserResponse){
         throw new CustomError(ErrorName.InternalError, 'Signup Failed,Try Again Later!', 500, Fault.SERVER, true);
     }
@@ -76,20 +97,35 @@ const loginFunc= async (request: Request): Promise<Response> => {
 
     const loginResponse = await IdentityService.login(email as string, password as string);
     if (!loginResponse){
-        throw new CustomError(ErrorName.InternalError, 'Login failed, Try again', 401, Fault.CLIENT, true);
+        throw new CustomError(ErrorName.InternalError, 'Login failed, Try again', 500, Fault.CLIENT, true);
     }
+
+    const userId = await IdentityService.getUser(loginResponse.AccessToken!);
+    const encryptedToken = EncryptionService.encrypt(loginResponse.RefreshToken!);
+
+    if (!await AuthCacheService.putAuthItem(userId, encryptedToken)){
+        await IdentityService.logout(loginResponse.AccessToken!);
+        throw new CustomError(ErrorName.InternalError, 'Login failed, Try again', 500, Fault.SERVER, true);
+    }
+
+    const data = {
+        IdToken: loginResponse.IdToken,
+        AccessToken: loginResponse.AccessToken,
+        ExpiresIn: loginResponse.ExpiresIn,
+        TokenType: loginResponse.TokenType,
+    };
 
     return {
         success: true,
         message: 'Login, Successful!',
-        data: loginResponse,
+        data,
     };
 };
 
 /**
  * logoutFunc expects
- * @param 'x-access-token'
- * @returns IResponse
+ * @param headers.x-access-token - Current access token in header
+ * @returns Response
 */
 
 const logoutFunc = async (request: Request): Promise<Response> => {
@@ -116,7 +152,7 @@ const logoutFunc = async (request: Request): Promise<Response> => {
 /**
  * forgetPasswordFunc expects
  * @param email
- * @returns IResponse
+ * @returns Response
 */
 
 const forgetPasswordFunc = async (request: Request): Promise<Response> => {
@@ -148,7 +184,7 @@ const forgetPasswordFunc = async (request: Request): Promise<Response> => {
  * @param email
  * @param answer
  * @param password
- * @returns IResponse
+ * @returns Response
 */
 
 const confirmForgetPasswordFunc = async (request: Request): Promise<Response> => {
@@ -181,31 +217,57 @@ const confirmForgetPasswordFunc = async (request: Request): Promise<Response> =>
 };
 
 /**
- * forgetPasswordFunc expects
- * @param refreshToken
- * @returns IResponse
-*/
+ * refreshSessionFunc expects
+ * @param headers.x-access-token - Current access token in header
+ * @returns Response with new tokens
+ */
+
+// store in db
 
 const refreshSessionFunc = async (request: Request): Promise<Response> => {
     const validationResult:ValidationResponse = RequestValidator.validate(request, [
-        ValidationField.RequestBody,
-        ValidationField.RefreshToken,
+        ValidationField.RequestHeaders,
+        ValidationField.AccessToken,
     ]);
 
     if (!validationResult.success){
         throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
     }
 
-    const { refreshToken } = request.body!;
+    const accessToken = request.headers?.['x-access-token'];
+    const token = accessToken?.slice(7)!;
+
+    const userId = await IdentityService.getUser(token);
+    const encryptedToken = await AuthCacheService.getAuthItem(userId, CacheFieldType.RefreshToken);
+
+    if (!encryptedToken) {
+        throw new CustomError( ErrorName.InternalError, 'Session Refresh Failed, No Token Found', 500, Fault.SERVER, false );
+    }
+    const refreshToken = EncryptionService.decrypt(encryptedToken);
+
     const sessionRefreshResponse = await IdentityService.refreshToken(refreshToken as string);
     if (!sessionRefreshResponse){
         throw new CustomError(ErrorName.InternalError, 'Session Refresh Failed', 500, Fault.SERVER, false);
     }
 
+    const newRefreshToken = EncryptionService.encrypt(sessionRefreshResponse.RefreshToken!);
+
+    if (!await AuthCacheService.putAuthItem(userId, newRefreshToken)){
+        await IdentityService.logout(sessionRefreshResponse.AccessToken!);
+        throw new CustomError(ErrorName.InternalError, 'Session Refresh Failed, Try again', 500, Fault.SERVER, true);
+    }
+
+    const data = {
+        IdToken: sessionRefreshResponse.IdToken,
+        AccessToken: sessionRefreshResponse.AccessToken,
+        ExpiresIn: sessionRefreshResponse.ExpiresIn,
+        TokenType: sessionRefreshResponse.TokenType,
+    };
+
     return {
         success: true,
         message: 'Session Refresh Successful',
-        data: sessionRefreshResponse,
+        data,
     };
 };
 
@@ -243,11 +305,7 @@ export const identityHandler = async(event: APIGatewayProxyEvent): Promise<APIGa
 
         return {
             statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,
-                'Access-Control-Allow-Methods': 'OPTIONS,POST',
-                'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Access-Token',
-            },
+            headers: CORS_HEADERS,
             body: JSON.stringify(response),
         };
 
@@ -255,11 +313,7 @@ export const identityHandler = async(event: APIGatewayProxyEvent): Promise<APIGa
         const errorResponse = exceptionHandlerFunction(error);
         return {
             statusCode: errorResponse.statusCode,
-            headers: {
-                'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,
-                'Access-Control-Allow-Methods': 'OPTIONS,POST',
-                'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Access-Token',
-            },
+            headers: CORS_HEADERS,
             body: JSON.stringify({
                 success: false,
                 message: errorResponse.message,
