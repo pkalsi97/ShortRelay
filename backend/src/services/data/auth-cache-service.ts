@@ -38,8 +38,8 @@ const getAuthItem = async (userId: string, field: CacheFieldType): Promise<strin
 
     const response = await dbClient.send(command);
 
-    if (response && response.Item && response.Item[field]){
-        return response.Item[field].S!;
+    if (response?.Item?.[field]?.S) {
+        return response.Item[field].S;
     }
 
     return null;
