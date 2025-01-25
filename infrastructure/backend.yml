@@ -468,8 +468,6 @@ Resources:
               - POST
             AllowedOrigins:
               - !Ref AllowedOrigin
-            ExposeHeaders:
-              - ETag
             MaxAge: 3000
       BucketEncryption:
         ServerSideEncryptionConfiguration:
