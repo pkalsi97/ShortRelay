@@ -1,4 +1,4 @@
-import { AttributeValue, GetItemCommand, PutItemCommand, DynamoDBClient, UpdateItemCommand, DeleteItemCommand } from '@aws-sdk/client-dynamodb';
+import { GetItemCommand, PutItemCommand, DynamoDBClient, UpdateItemCommand, DeleteItemCommand } from '@aws-sdk/client-dynamodb';
 
 import { DbConfig } from '../../types/db.types';
 
@@ -30,14 +30,16 @@ const getAuthItem = async (userId: string, field: CacheFieldType): Promise<strin
     const command = new GetItemCommand({
         TableName: dbConfig.table,
         Key: { userId: { S: userId } },
-        ProjectionExpression: field,
+        ProjectionExpression: '#field',
+        ExpressionAttributeNames: {
+            '#field': field,
+        },
     });
 
     const response = await dbClient.send(command);
-    const item = response.Item as Record<string, AttributeValue> | undefined;
 
-    if (item?.[field]?.S) {
-        return item[field].S;
+    if (response && response.Item && response.Item[field]){
+        return response.Item[field].S!;
     }
 
     return null;
