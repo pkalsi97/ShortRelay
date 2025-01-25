@@ -245,12 +245,12 @@ const refreshSessionFunc = async (request: Request): Promise<Response> => {
     }
     const refreshToken = EncryptionService.decrypt(encryptedToken);
 
-    const sessionRefreshResponse = await IdentityService.refreshToken(refreshToken as string);
-    if (!sessionRefreshResponse){
+    const sessionRefreshResponse = await IdentityService.refreshToken(refreshToken);
+    if (!sessionRefreshResponse || !sessionRefreshResponse.RefreshToken){
         throw new CustomError(ErrorName.InternalError, 'Session Refresh Failed', 500, Fault.SERVER, false);
     }
 
-    const newRefreshToken = EncryptionService.encrypt(sessionRefreshResponse.RefreshToken!);
+    const newRefreshToken = EncryptionService.encrypt(sessionRefreshResponse.RefreshToken);
 
     if (!await AuthCacheService.putAuthItem(userId, newRefreshToken)){
         await IdentityService.logout(sessionRefreshResponse.AccessToken!);

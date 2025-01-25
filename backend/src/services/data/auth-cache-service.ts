@@ -30,10 +30,7 @@ const getAuthItem = async (userId: string, field: CacheFieldType): Promise<strin
     const command = new GetItemCommand({
         TableName: dbConfig.table,
         Key: { userId: { S: userId } },
-        ProjectionExpression: '#field',
-        ExpressionAttributeNames: {
-            '#field': field,
-        },
+        ProjectionExpression: field,
     });
 
     const response = await dbClient.send(command);
