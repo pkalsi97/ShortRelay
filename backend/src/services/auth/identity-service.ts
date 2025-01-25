@@ -11,6 +11,7 @@ import {
     ForgotPasswordCommandOutput,
     AdminDeleteUserCommand,
     GetUserCommand,
+    ListUsersCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 
 export interface AuthConfig {
@@ -165,6 +166,19 @@ const getUser = async (accessToken:string):Promise<string> => {
     return userId;
 };
 
+const checkUserExist = async (email:string): Promise<boolean> => {
+    const listUsersCommand = new ListUsersCommand({
+        UserPoolId: cognitoConfig.userPoolId,
+        Filter: `email="${email}"`,
+    });
+    const response = await cognitoClient.send(listUsersCommand);
+    if (response.Users && response.Users.length > 0){
+        return true;
+    }
+
+    return false;
+};
+
 export const IdentityService = {
     initialize,
     createUser,
@@ -174,4 +188,5 @@ export const IdentityService = {
     logout,
     refreshToken,
     getUser,
+    checkUserExist,
 };
