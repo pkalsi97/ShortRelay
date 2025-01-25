@@ -11,6 +11,12 @@ const ROUTES = {
     UPLOAD_REQUEST: '/v1/user/upload-request',
 } as const;
 
+const CORS_HEADERS = {
+    'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,
+    'Access-Control-Allow-Methods': 'OPTIONS,POST',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Access-Token',
+} as const;
+
 // Initialize
 const authConfig: AuthConfig = {
     userPoolId: process.env.USER_POOL_ID!,
@@ -90,11 +96,7 @@ export const uploadHandler = async(event:APIGatewayProxyEvent): Promise<APIGatew
 
         return {
             statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,
-                'Access-Control-Allow-Methods': 'OPTIONS,POST',
-                'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Access-Token',
-            },
+            headers: CORS_HEADERS,
             body: JSON.stringify(response),
         };
 
@@ -102,11 +104,7 @@ export const uploadHandler = async(event:APIGatewayProxyEvent): Promise<APIGatew
         const errorResponse = exceptionHandlerFunction(error);
         return {
             statusCode: errorResponse.statusCode,
-            headers: {
-                'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,
-                'Access-Control-Allow-Methods': 'OPTIONS,POST',
-                'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Access-Token',
-            },
+            headers: CORS_HEADERS,
             body: JSON.stringify({
                 success: false,
                 message: errorResponse.message,
