@@ -61,7 +61,7 @@ Parameters:
     Description: File Expiry Days for Transport
   AllowedOrigin:
     Type: String
-    Description: CORS Allowed Origin
+    Description: Allowed CORS
   AesKeyUtil: 
     Type: String
     Description: AES Key of encryption
