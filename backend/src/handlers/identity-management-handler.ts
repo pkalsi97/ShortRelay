@@ -246,15 +246,8 @@ const refreshSessionFunc = async (request: Request): Promise<Response> => {
     const refreshToken = EncryptionService.decrypt(encryptedToken);
 
     const sessionRefreshResponse = await IdentityService.refreshToken(refreshToken);
-    if (!sessionRefreshResponse || !sessionRefreshResponse.RefreshToken){
+    if (!sessionRefreshResponse){
         throw new CustomError(ErrorName.InternalError, 'Session Refresh Failed', 500, Fault.SERVER, false);
-    }
-
-    const newRefreshToken = EncryptionService.encrypt(sessionRefreshResponse.RefreshToken);
-
-    if (!await AuthCacheService.putAuthItem(userId, newRefreshToken)){
-        await IdentityService.logout(sessionRefreshResponse.AccessToken!);
-        throw new CustomError(ErrorName.InternalError, 'Session Refresh Failed, Try again', 500, Fault.SERVER, true);
     }
 
     const data = {
