@@ -64,7 +64,7 @@ Parameters:
     Description: CORS Allowed Origin
   AesKeyUtil: 
     Type: String
-    Description: AES Key of length - 32
+    Description: AES Key of encryption
   Environment:
     Type: String
     Description: Deployment Environment
