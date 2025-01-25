@@ -167,9 +167,13 @@ const forgetPasswordFunc = async (request: Request): Promise<Response> => {
 
     const { email } = request.body!;
 
+    if (!await IdentityService.checkUserExist(email as string)){
+        throw new CustomError(ErrorName.InternalError, `No User registered with ${email}!`, 500, Fault.CLIENT, true);
+    }
+
     const forgetPasswordResponse = await IdentityService.forgetPassword(email as string);
     if (!forgetPasswordResponse) {
-        throw new CustomError(ErrorName.InternalError, 'Unable to reset Password', 500, Fault.SERVER, false);
+        throw new CustomError(ErrorName.ValidationError, 'Unable to reset Password', 404, Fault.SERVER, false);
     }
 
     return {
@@ -221,8 +225,6 @@ const confirmForgetPasswordFunc = async (request: Request): Promise<Response> =>
  * @param headers.x-access-token - Current access token in header
  * @returns Response with new tokens
  */
-
-// store in db
 
 const refreshSessionFunc = async (request: Request): Promise<Response> => {
     const validationResult:ValidationResponse = RequestValidator.validate(request, [
