@@ -19,7 +19,6 @@ const putAuthItem = async (userId:string, token:string): Promise<boolean> => {
     const command = new PutItemCommand({
         TableName: dbConfig.table,
         Item: { userId: { S: userId }, refreshToken: { S: token } },
-        ConditionExpression: 'attribute_not_exists(userId)',
     });
 
     const response = await dbClient.send(command);
