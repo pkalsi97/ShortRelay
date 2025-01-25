@@ -42,3 +42,5 @@ Prerequisites:
 - `UploadSizeLimit`: Maximum upload size
 - `UploadTimeLimit`: Upload time limit
 - `TransportExpiryDays`: Temporary storage retention period
+- `AllowedOrigin`: Allowed Origin
+- `AesKeyUtil`: Aes key for encryption
