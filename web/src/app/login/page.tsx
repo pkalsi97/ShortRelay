@@ -2,6 +2,12 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Toaster, toast } from 'react-hot-toast';
+import { authApi } from '@/utils/api-client';
+import { StandardResponse } from '@/types/api.types';
+import { API_ROUTES } from '@/config/api.config';
+import { authService } from '@/utils/auth.service';
 
 interface FormData {
   email: string;
@@ -13,7 +19,16 @@ interface FormErrors {
   password?: string;
 }
 
+interface LoginResponse {
+  IdToken: string;
+  AccessToken: string;
+  ExpiresIn: number;
+  TokenType: string;
+}
+
 export default function Login() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     email: '',
     password: '',
@@ -24,14 +39,12 @@ export default function Login() {
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
 
-    // Email validation
     if (!formData.email) {
       newErrors.email = 'Email is required';
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email';
     }
 
-    // Password validation
     if (!formData.password) {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 5) {
@@ -42,14 +55,37 @@ export default function Login() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (validateForm()) {
-      // Proceed with login
-      console.log('Form is valid', formData);
+        try {
+            setIsLoading(true);
+            const response = await authApi.post<StandardResponse<LoginResponse>>(
+                API_ROUTES.auth.login(),
+                formData
+            );
+
+            if (response.success) {
+                authService.setTokens(response.data);
+                toast.success(response.message);
+                router.push('/dashboard');
+            } else {
+                toast.error(response.message);
+                setErrors({
+                    email: response.message
+                });
+            }
+        } catch (error) {
+            console.log(error);
+            toast.error('Unable to connect to the server. Please check your internet connection.');
+            setErrors({
+                email: 'Connection failed. Please try again.'
+            });
+        } finally {
+            setIsLoading(false);
+        }
     }
-  };
+};
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -57,7 +93,6 @@ export default function Login() {
       ...prev,
       [name]: value
     }));
-    // Clear error when user starts typing
     if (errors[name as keyof FormErrors]) {
       setErrors(prev => ({
         ...prev,
@@ -68,6 +103,29 @@ export default function Login() {
 
   return (
     <main className="min-h-screen bg-black overflow-x-hidden">
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          duration: 5000,
+          style: {
+            background: '#333',
+            color: '#fff',
+          },
+          success: {
+            iconTheme: {
+              primary: '#10B981',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#EF4444',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
+
       {/* Navbar */}
       <div className="navbar bg-black/50 backdrop-blur-sm fixed top-0 z-50 px-4">
         <div className="flex-1">
@@ -102,9 +160,10 @@ export default function Login() {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
+                  disabled={isLoading}
                   className={`w-full px-4 py-3 bg-gray-900 border ${
                     errors.email ? 'border-red-500' : 'border-gray-800'
-                  } rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-gray-100`}
+                  } rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-gray-100 disabled:opacity-50`}
                   placeholder="Enter your email"
                 />
                 {errors.email && (
@@ -121,9 +180,10 @@ export default function Login() {
                   name="password"
                   value={formData.password}
                   onChange={handleChange}
+                  disabled={isLoading}
                   className={`w-full px-4 py-3 bg-gray-900 border ${
                     errors.password ? 'border-red-500' : 'border-gray-800'
-                  } rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-gray-100`}
+                  } rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-gray-100 disabled:opacity-50`}
                   placeholder="Enter your password"
                 />
                 {errors.password && (
@@ -133,9 +193,14 @@ export default function Login() {
 
               <button 
                 type="submit" 
-                className="w-full btn bg-gradient-to-r from-purple-500 to-cyan-500 border-0 text-white hover:opacity-90"
+                className="w-full btn bg-gradient-to-r from-purple-500 to-cyan-500 border-0 text-white hover:opacity-90 disabled:opacity-50"
+                disabled={isLoading}
               >
-                Sign In
+                {isLoading ? (
+                  <span className="loading loading-spinner loading-sm"></span>
+                ) : (
+                  'Sign In'
+                )}
               </button>
             </form>
 
@@ -177,5 +242,5 @@ export default function Login() {
         </div>
       </footer>
     </main>
-  )
+  );
 }

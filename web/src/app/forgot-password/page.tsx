@@ -3,6 +3,10 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast, Toaster } from 'react-hot-toast';
+import { authApi } from '@/utils/api-client';
+import { API_ROUTES } from '@/config/api.config';
+import { StandardResponse } from '@/types/api.types';
 
 interface FormData {
   email: string;
@@ -37,14 +41,26 @@ export default function ForgotPassword() {
     if (validateForm()) {
       setIsLoading(true);
       try {
-        // Here you would typically make an API call to send OTP
-        // For now, we'll just simulate it
-        console.log('Sending OTP to:', formData.email);
-        
-        // Redirect to confirm page with email
-        router.push(`/forgot-password/confirm?email=${encodeURIComponent(formData.email)}`);
+        const response = await authApi.post<StandardResponse<unknown>>(
+          API_ROUTES.auth.forgetPassword(),
+          { email: formData.email }
+        );
+
+        if (response.success) {
+          toast.success(response.message);
+          router.push(`/forgot-password/confirm?email=${encodeURIComponent(formData.email)}`);
+        } else {
+          toast.error(response.message);
+          setErrors({
+            email: response.message
+          });
+        }
       } catch (error) {
         console.error('Error:', error);
+        toast.error('Unable to connect to the server. Please try again.');
+        setErrors({
+          email: 'Connection failed. Please try again.'
+        });
       } finally {
         setIsLoading(false);
       }
@@ -67,6 +83,29 @@ export default function ForgotPassword() {
 
   return (
     <main className="min-h-screen bg-black overflow-x-hidden">
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          duration: 5000,
+          style: {
+            background: '#333',
+            color: '#fff',
+          },
+          success: {
+            iconTheme: {
+              primary: '#10B981',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#EF4444',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
+
       {/* Navbar */}
       <div className="navbar bg-black/50 backdrop-blur-sm fixed top-0 z-50 px-4">
         <div className="flex-1">
@@ -105,9 +144,10 @@ export default function ForgotPassword() {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
+                  disabled={isLoading}
                   className={`w-full px-4 py-3 bg-gray-900 border ${
                     errors.email ? 'border-red-500' : 'border-gray-800'
-                  } rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-gray-100`}
+                  } rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-gray-100 disabled:opacity-50`}
                   placeholder="Enter your registered email"
                 />
                 {errors.email && (
@@ -120,7 +160,11 @@ export default function ForgotPassword() {
                 className="w-full btn bg-gradient-to-r from-purple-500 to-cyan-500 border-0 text-white hover:opacity-90 disabled:opacity-50"
                 disabled={isLoading}
               >
-                {isLoading ? 'Sending...' : 'Send Verification Code'}
+                {isLoading ? (
+                  <span className="loading loading-spinner loading-sm"></span>
+                ) : (
+                  'Send Verification Code'
+                )}
               </button>
             </form>
 
@@ -143,5 +187,5 @@ export default function ForgotPassword() {
         </div>
       </footer>
     </main>
-  )
+  );
 }
