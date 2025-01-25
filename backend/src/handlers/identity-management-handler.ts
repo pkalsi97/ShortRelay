@@ -263,7 +263,7 @@ export const identityHandler = async(event: APIGatewayProxyEvent): Promise<APIGa
             body: JSON.stringify({
                 success: false,
                 message: errorResponse.message,
-                body: {},
+                data: {},
                 error: errorResponse,
             }),
         };

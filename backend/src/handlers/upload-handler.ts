@@ -110,7 +110,7 @@ export const uploadHandler = async(event:APIGatewayProxyEvent): Promise<APIGatew
             body: JSON.stringify({
                 success: false,
                 message: errorResponse.message,
-                body: {},
+                data: {},
                 error: errorResponse,
             }),
         };
