@@ -406,6 +406,7 @@ Resources:
                 - ecs:StopTask
                 - ecs:DescribeTasks
                 - ecs:ListTasks
+                - iam:PassRole
               Resource:
                 - !Ref ProcessorTaskDefinition
                 - !GetAtt WorkerCluster.Arn
