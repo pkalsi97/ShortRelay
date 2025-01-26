@@ -815,6 +815,8 @@ Resources:
           - Sid: AllowPullPush
             Effect: Allow
             Principal:
+              AWS: 
+              - !GetAtt TaskExecutionRole.Arn
               Service:
                 - ecs-tasks.amazonaws.com
                 - ecr.amazonaws.com
