@@ -787,7 +787,7 @@ Resources:
       RepositoryName: !Sub ${AppId}-worker
       ImageScanningConfiguration:
         ScanOnPush: true
-      ImageTagMutability: IMMUTABLE
+      ImageTagMutability: MUTABLE
       EncryptionConfiguration:
         EncryptionType: AES256
       LifecyclePolicy:
