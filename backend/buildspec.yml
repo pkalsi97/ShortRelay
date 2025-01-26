@@ -3,17 +3,32 @@ phases:
   install:
     runtime-versions:
       nodejs: 18
+      golang: 1.21
     commands:
-      - cd backend
+      - cd backend/nodejs
       - echo "Installing project dependencies..."
       - npm install --quiet
-      
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com  
   build:
     commands:
+    # Nodejs Build
       - echo "Starting build..."
       - npm run build
       - cp ../infrastructure/backend.yml .
       - aws cloudformation package --template-file backend.yml --s3-bucket $S3_BUCKET --output-template-file template-export.yml
+
+    # Build and push worker
+      - echo "Building worker..."
+      - cd ../workers/processor
+      - docker build -t processor .
+      - echo "Tagging worker image..."
+      - docker tag processor:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+      - echo "Pushing worker image..."
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+      - cd ../../nodejs
       
   post_build:
     commands:
@@ -27,4 +42,4 @@ artifacts:
     - dist/**/*
     - package.json
     - package-lock.json
-  base-directory:  backend
+  base-directory:  backend/nodejs
