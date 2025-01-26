@@ -20,10 +20,16 @@ phases:
       
       - cd workers/processor
       - go build -o processor ./cmd/processor
+      - echo "Building Docker image..."
+      - docker build -t $ECR_REPOSITORY:latest .
+      - docker tag $ECR_REPOSITORY:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY:latest
       - cd ../..
       
   post_build:
     commands:
+      - echo "Pushing Docker image..."
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+
       - cd nodejs
       - rm -rf node_modules
       - npm prune --omit=dev --quiet
@@ -36,6 +42,4 @@ artifacts:
     - nodejs/dist/**/*
     - nodejs/package.json
     - nodejs/package-lock.json
-    - workers/processor/processor
-    - workers/processor/Dockerfile
   base-directory: backend
