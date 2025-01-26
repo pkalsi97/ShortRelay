@@ -1,4 +1,3 @@
-// src/components/protected-route.tsx
 'use client';
 
 import { useEffect, useState } from 'react';

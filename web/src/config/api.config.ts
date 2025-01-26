@@ -12,6 +12,7 @@ const ENDPOINTS = {
     },
     user: {
         BASE: process.env.NEXT_PUBLIC_USER_API_URL,
+        UPLOAD: '/v1/user/upload-request'
     },
 } as const;
 
@@ -42,6 +43,7 @@ export const API_ROUTES = {
         sessionRefresh: () => getApiUrl('auth', 'SESSION_REFRESH'),
     },
     user: {
+        uploadVideo: () => getApiUrl('user','UPLOAD')
     },
 } as const;
 
