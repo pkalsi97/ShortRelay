@@ -410,6 +410,7 @@ Resources:
               Resource:
                 - !Ref ProcessorTaskDefinition
                 - !GetAtt WorkerCluster.Arn
+                - !GetAtt TaskExecutionRole.Arn
       Events:
         TaskQueue:
           Type: SQS
