@@ -10,25 +10,35 @@ phases:
       - npm install --quiet
       - cd ..
       
+  pre_build:
+    commands:
+
+      - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://127.0.0.1:2375 --storage-driver=overlay2 &
+      - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
+
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
+      
   build:
     commands:
       - cd nodejs
       - npm run build
       - cp ../../infrastructure/backend.yml .
-      - aws cloudformation package --template-file backend.yml --s3-bucket $S3_BUCKET --output-template-file template-export.yml
+      - aws cloudformation package --template-file backend.yml --s3-bucket ${S3_BUCKET} --output-template-file template-export.yml
       - cd ..
       
       - cd workers/processor
       - go build -o processor ./cmd/processor
       - echo "Building Docker image..."
-      - docker build -t $ECR_REPOSITORY:latest .
-      - docker tag $ECR_REPOSITORY:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+      - docker build -t ${ECR_REPOSITORY} .
+      - docker tag ${ECR_REPOSITORY}:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
       - cd ../..
       
   post_build:
     commands:
+
       - echo "Pushing Docker image..."
-      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+      - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
 
       - cd nodejs
       - rm -rf node_modules
@@ -42,4 +52,6 @@ artifacts:
     - nodejs/dist/**/*
     - nodejs/package.json
     - nodejs/package-lock.json
+    - workers/processor/processor
+    - workers/processor/Dockerfile
   base-directory: backend
