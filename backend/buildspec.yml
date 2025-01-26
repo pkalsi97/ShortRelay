@@ -4,28 +4,38 @@ phases:
   install:
     runtime-versions:
       nodejs: 18
+      golang: 1.21
     commands:
       - cd backend/nodejs
-      - echo "Installing project dependencies..."
       - npm install --quiet
+      - cd ..
       
   build:
     commands:
-      - echo "Starting build..."
+      - cd nodejs
       - npm run build
       - cp ../infrastructure/backend.yml .
       - aws cloudformation package --template-file backend.yml --s3-bucket $S3_BUCKET --output-template-file template-export.yml
+      - cd ..
+      
+      - cd workers/processor
+      - go build -o processor ./cmd/processor
+      - cd ../..
       
   post_build:
     commands:
+      - cd nodejs
       - rm -rf node_modules
       - npm prune --omit=dev --quiet
       - rm -rf dist/workers/*
+      - cd ..
 
 artifacts:
   files:
-    - template-export.yml
-    - dist/**/*
-    - package.json
-    - package-lock.json
-  base-directory: backend/nodejs
+    - nodejs/template-export.yml
+    - nodejs/dist/**/*
+    - nodejs/package.json
+    - nodejs/package-lock.json
+    - workers/processor/processor
+    - workers/processor/Dockerfile
+  base-directory: backend
