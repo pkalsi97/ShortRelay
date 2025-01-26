@@ -945,6 +945,8 @@ Resources:
               Value: '8'
             - Name: FFMPEG_THREAD_QUEUE_SIZE
               Value: '512'
+            - Name: FOOTAGE_DIR
+              Value: '/tmp/footage'
           HealthCheck:
             Command:
               - CMD-SHELL
