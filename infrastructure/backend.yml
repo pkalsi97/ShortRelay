@@ -933,6 +933,9 @@ Resources:
       Memory: '16384'
       ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
       TaskRoleArn: !GetAtt ProcessorTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
       ContainerDefinitions:
         - Name: processor
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${WorkerRepository}:latest
