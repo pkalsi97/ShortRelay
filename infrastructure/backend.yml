@@ -74,7 +74,9 @@ Parameters:
   DefaultRouteTableId:
     Type: String
     Description: Default VPC's route table ID for VPC endpoints
-
+  DefaultSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Default Security Group ID for ECS Tasks
   Environment:
     Type: String
     Description: Deployment Environment
@@ -437,7 +439,7 @@ Resources:
           ECS_CLUSTER: !Ref WorkerCluster
           PROCESSOR_TASK_DEFINITION: !Ref ProcessorTaskDefinition
           VPC_ID: !Ref DefaultVpcId
-          SECURITY_GROUP_ID: !Ref WorkerSecurityGroup
+          SECURITY_GROUP_ID: !Ref DefaultSecurityGroupId
           SUBNET_IDS: !Ref DefaultSubnetIds
   CompletionHandler:
     Type: AWS::Serverless::Function
@@ -653,22 +655,6 @@ Resources:
     # -----------------------------------------------------------------------------------------------------------------------
     # NETWORK
     # -----------------------------------------------------------------------------------------------------------------------
-    # Security Group
-  WorkerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for Fargate workers
-      VpcId: !Ref DefaultVpcId
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
-          CidrIp: 0.0.0.0/0
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref AppId
   # VPC Endpoints
   S3Endpoint:
     Type: AWS::EC2::VPCEndpoint
