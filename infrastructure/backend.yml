@@ -411,7 +411,7 @@ Resources:
                 - !Ref ProcessorTaskDefinition
                 - !GetAtt WorkerCluster.Arn
                 - !GetAtt TaskExecutionRole.Arn
-                - !GetAtt ProcessorTaskRole.Arn 
+                - !GetAtt ProcessorTaskRole.Arn
       Events:
         TaskQueue:
           Type: SQS
@@ -427,11 +427,11 @@ Resources:
           PROCESSOR_TASK_DEFINITION: !Ref ProcessorTaskDefinition
           VPC_ID: !Ref WorkerVPC
           SECURITY_GROUP_ID: !Ref WorkerSecurityGroup
-          SUBNET_IDS: !Join 
-              - ','
-              - - !Ref PublicSubnet1
-                - !Ref PublicSubnet2
-                - !Ref PublicSubnet3
+          SUBNET_IDS: !Join
+            - ','
+            - - !Ref PublicSubnet1
+              - !Ref PublicSubnet2
+              - !Ref PublicSubnet3
   CompletionHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -673,15 +673,14 @@ Resources:
     Properties:
       VpcId: !Ref WorkerVPC
       InternetGatewayId: !Ref InternetGateway
-  # Public Subnet
-  PublicSubnet:
+  # Public Subnets
+  PublicSubnet1:
     Type: AWS::EC2::Subnet
-    DependsOn: WorkerVPC
     Properties:
       VpcId: !Ref WorkerVPC
       CidrBlock: 10.0.1.0/24
       AvailabilityZone: !Select
-        - 0
+        - 1
         - !GetAZs ''
       MapPublicIpOnLaunch: true
       Tags:
@@ -689,6 +688,53 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref AppId
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref WorkerVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select
+        - 2
+        - !GetAZs ''
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref WorkerVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select
+        - 3
+        - !GetAZs ''
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+
+  # Route Table Associations
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet3
+      RouteTableId: !Ref PublicRouteTable
   # Route Table
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -706,11 +752,6 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
-  PublicSubnetRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnet
-      RouteTableId: !Ref PublicRouteTable
 
   # Security Group
   WorkerSecurityGroup:
@@ -820,9 +861,9 @@ Resources:
           - Sid: AllowPullPush
             Effect: Allow
             Principal:
-              AWS: 
-              - !GetAtt TaskExecutionRole.Arn
-              - !GetAtt ProcessorTaskRole.Arn
+              AWS:
+                - !GetAtt TaskExecutionRole.Arn
+                - !GetAtt ProcessorTaskRole.Arn
               Service:
                 - ecs-tasks.amazonaws.com
                 - ecr.amazonaws.com
@@ -956,7 +997,7 @@ Resources:
             - Name: FFMPEG_THREAD_QUEUE_SIZE
               Value: '512'
             - Name: FOOTAGE_DIR
-              Value: '/tmp/footage'
+              Value: /tmp/footage
           HealthCheck:
             Command:
               - CMD-SHELL
@@ -977,39 +1018,35 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref AppId
-  # -----------------------------------------------------------------------------------------------------------------------
-  # Metadata
-  # -----------------------------------------------------------------------------------------------------------------------
 Metadata:
   AWS::Composer::Groups:
     Group:
-      Label: Processing Pipeline
-      Members:
-        - ContentStorage
-        - TransportStorage
-        - CompletionQueue
-        - UploadEventQueue
-        - CompletionHandler
-        - EventHandler
-        - TaskQueue
-        - TaskHandler
-        - MetadataStorage
-    Group3:
-      Label: Network Stack
+      Label: Network & Storage
       Members:
         - WorkerSecurityGroup
-        - PublicSubnet
+        - PublicSubnet3
         - S3Endpoint
         - DynamoDBEndpoint
-    Group4:
-      Label: Workers
-      Members:
-        - WorkerCluster
-        - ProcessorTaskDefinition
-        - WorkerRepository
+        - ContentStorage
+        - TransportStorage
+        - MetadataStorage
     Group2:
       Label: Authentication & Authorization
       Members:
         - UserPoolClient
-        - AuthCache
         - UserPool
+        - AuthCache
+    Group3:
+      Label: Event Pipeline
+      Members:
+        - UploadEventQueue
+        - EventHandler
+        - CompletionQueue
+        - CompletionHandler
+    Group4:
+      Label: Processing Pipeline
+      Members:
+        - TaskHandler
+        - ProcessorTaskDefinition
+        - WorkerCluster
+        - TaskQueue
