@@ -65,6 +65,18 @@ Parameters:
   AesKeyUtil:
     Type: String
     Description: AES Key of encryption
+  DefaultVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Default VPC ID
+  DefaultSubnetIds:
+    Type: String
+    Description: Comma-separated list of subnet IDs
+  DefaultRouteTableId:
+    Type: String
+    Description: Default VPC's route table ID for VPC endpoints
+  DefaultSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Default Security Group ID for ECS Tasks
   Environment:
     Type: String
     Description: Deployment Environment
@@ -425,13 +437,9 @@ Resources:
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
           ECS_CLUSTER: !Ref WorkerCluster
           PROCESSOR_TASK_DEFINITION: !Ref ProcessorTaskDefinition
-          VPC_ID: !Ref WorkerVPC
+          VPC_ID: !Ref DefaultVpcId
           SECURITY_GROUP_ID: !Ref WorkerSecurityGroup
-          SUBNET_IDS: !Join
-            - ','
-            - - !Ref PublicSubnet1
-              - !Ref PublicSubnet2
-              - !Ref PublicSubnet3
+          SUBNET_IDS: !Ref DefaultSubnetIds
   CompletionHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -667,28 +675,11 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref AppId
-
   AttachGateway:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
       VpcId: !Ref WorkerVPC
       InternetGatewayId: !Ref InternetGateway
-  # Public Subnet
-  PublicSubnet:
-    Type: AWS::EC2::Subnet
-    DependsOn: WorkerVPC
-    Properties:
-      VpcId: !Ref WorkerVPC
-      CidrBlock: 10.0.1.0/24
-      AvailabilityZone: !Select
-        - 0
-        - !GetAZs ''
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref AppId
   # Route Table
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -699,19 +690,12 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref AppId
-
   PublicRoute:
     Type: AWS::EC2::Route
     Properties:
       RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
-  PublicSubnetRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnet
-      RouteTableId: !Ref PublicRouteTable
-
   # Security Group
   WorkerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
