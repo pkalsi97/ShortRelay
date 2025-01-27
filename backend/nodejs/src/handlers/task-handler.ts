@@ -1,4 +1,4 @@
-import { ECSClient, DescribeTaskDefinitionCommand, RunTaskCommand } from '@aws-sdk/client-ecs';
+import { ECSClient, RunTaskCommand } from '@aws-sdk/client-ecs';
 import { SQSEvent } from 'aws-lambda';
 
 import { Task } from '../types/task.type';
@@ -19,16 +19,9 @@ export const taskHandler = async (event: SQSEvent): Promise<void> => {
         try {
             const task: Task = JSON.parse(record.body);
 
-            const describeTaskDef = new DescribeTaskDefinitionCommand({
-                taskDefinition: config.taskDefinition,
-            });
-
-            const taskDef = await ecsClient.send(describeTaskDef);
-            const latestRevision = taskDef.taskDefinition?.revision;
-
             const command = new RunTaskCommand({
                 cluster: config.cluster,
-                taskDefinition: `${config.taskDefinition}:${latestRevision}`,
+                taskDefinition: `${config.taskDefinition}`,
                 capacityProviderStrategy: [
                     {
                         capacityProvider: 'FARGATE',
