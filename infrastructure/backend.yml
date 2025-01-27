@@ -415,12 +415,14 @@ Resources:
                 - ecs:StopTask
                 - ecs:DescribeTasks
                 - ecs:ListTasks
+                - ecs:DescribeTaskDefinition
                 - iam:PassRole
               Resource:
                 - !Ref ProcessorTaskDefinition
                 - !GetAtt WorkerCluster.Arn
                 - !GetAtt TaskExecutionRole.Arn
                 - !GetAtt ProcessorTaskRole.Arn
+                - '*'
       Events:
         TaskQueue:
           Type: SQS
@@ -916,3 +918,39 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref AppId
+Metadata:
+  AWS::Composer::Groups:
+    Group:
+      Label: Authentication & Authorization
+      Members:
+        - UserPoolClient
+        - AuthCache
+        - UserPool
+    Group2:
+      Label: Worker
+      Members:
+        - ProcessorTaskDefinition
+        - DynamoDBEndpoint
+        - TaskExecutionRole
+        - S3Endpoint
+        - WorkerCluster
+        - WorkerSecurityGroup
+    Group3:
+      Label: Event Pipeline
+      Members:
+        - UploadEventQueue
+        - CompletionQueue
+        - EventHandler
+        - CompletionHandler
+    Group4:
+      Label: Task Management
+      Members:
+        - TaskQueue
+        - TaskHandler
+        - Group2
+    Group5:
+      Label: Group5
+      Members:
+        - MetadataStorage
+        - TransportStorage
+        - ContentStorage
