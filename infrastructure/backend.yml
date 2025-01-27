@@ -425,9 +425,13 @@ Resources:
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
           ECS_CLUSTER: !Ref WorkerCluster
           PROCESSOR_TASK_DEFINITION: !Ref ProcessorTaskDefinition
-          SUBNET_ID: !Ref PublicSubnet
-          SECURITY_GROUP_ID: !Ref WorkerSecurityGroup
           VPC_ID: !Ref WorkerVPC
+          SECURITY_GROUP_ID: !Ref WorkerSecurityGroup
+          SUBNET_IDS: !Join 
+              - ','
+              - - !Ref PublicSubnet1
+                - !Ref PublicSubnet2
+                - !Ref PublicSubnet3
   CompletionHandler:
     Type: AWS::Serverless::Function
     Properties:

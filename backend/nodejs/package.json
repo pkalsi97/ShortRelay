@@ -7,7 +7,6 @@
     "lint:fix": "eslint . --fix",
     "build": "tsc"
   },
-  "type": "module",
   "keywords": [],
   "author": "",
   "license": "ISC",

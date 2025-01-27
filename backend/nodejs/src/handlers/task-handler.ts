@@ -1,29 +1,44 @@
-import { ECSClient, RunTaskCommand } from '@aws-sdk/client-ecs';
+import { ECSClient, DescribeTaskDefinitionCommand, RunTaskCommand } from '@aws-sdk/client-ecs';
 import { SQSEvent } from 'aws-lambda';
 
 import { Task } from '../types/task.type';
 
 const ecsClient = new ECSClient( { region: process.env.AWS_DEFAULT_REGION! } );
 
+const config = {
+    region: process.env.AWS_DEFAULT_REGION!,
+    cluster: process.env.ECS_CLUSTER!,
+    taskDefinition: process.env.PROCESSOR_TASK_DEFINITION!,
+    subnets: process.env.SUBNET_IDS!.split(','),
+    securityGroups: [process.env.SECURITY_GROUP_ID!],
+};
+
 export const taskHandler = async (event: SQSEvent): Promise<void> => {
+    console.warn(config);
     for (const record of event.Records) {
         try {
             const task: Task = JSON.parse(record.body);
-            console.warn('Processing task:', task);
+
+            const describeTaskDef = new DescribeTaskDefinitionCommand({
+                taskDefinition: config.taskDefinition,
+            });
+
+            const taskDef = await ecsClient.send(describeTaskDef);
+            const latestRevision = taskDef.taskDefinition?.revision;
 
             const command = new RunTaskCommand({
-                cluster: process.env.ECS_CLUSTER!,
-                taskDefinition: process.env.PROCESSOR_TASK_DEFINITION!,
+                cluster: config.cluster,
+                taskDefinition: `${config.taskDefinition}:${latestRevision}`,
                 capacityProviderStrategy: [
                     {
-                        capacityProvider: 'FARGATE_SPOT',
+                        capacityProvider: 'FARGATE',
                         weight: 1,
                     },
                 ],
                 networkConfiguration: {
                     awsvpcConfiguration: {
-                        subnets: [process.env.SUBNET_ID!],
-                        securityGroups: [process.env.SECURITY_GROUP_ID!],
+                        subnets: config.subnets,
+                        securityGroups: config.securityGroups,
                         assignPublicIp: 'ENABLED',
                     },
                 },
@@ -50,9 +65,8 @@ export const taskHandler = async (event: SQSEvent): Promise<void> => {
                 },
             });
 
-            console.warn('Starting ECS task with params:');
             const response = await ecsClient.send(command);
-            console.warn('ECS task started:', response);
+            console.warn(response);
 
         } catch (error) {
             console.error('Error processing task:', error);
@@ -60,3 +74,7 @@ export const taskHandler = async (event: SQSEvent): Promise<void> => {
         }
     }
 };
+
+// Multiple AZs
+// Multiple subnets
+// Both FARGATE and FARGATE_SPOT providers
