@@ -65,18 +65,6 @@ Parameters:
   AesKeyUtil:
     Type: String
     Description: AES Key of encryption
-  DefaultVpcId:
-    Type: AWS::EC2::VPC::Id
-    Description: Default VPC ID
-  DefaultSubnetIds:
-    Type: String
-    Description: Comma-separated list of subnet IDs
-  DefaultRouteTableId:
-    Type: String
-    Description: Default VPC's route table ID for VPC endpoints
-  DefaultSecurityGroupId:
-    Type: AWS::EC2::SecurityGroup::Id
-    Description: Default Security Group ID for ECS Tasks
   Environment:
     Type: String
     Description: Deployment Environment
@@ -85,6 +73,7 @@ Parameters:
       - Development
       - Staging
       - Production
+
 Resources:
   # -----------------------------------------------------------------------------------------------------------------------
   # LOGGING & MONITORING
@@ -417,14 +406,12 @@ Resources:
                 - ecs:StopTask
                 - ecs:DescribeTasks
                 - ecs:ListTasks
-                - ecs:DescribeTaskDefinition
                 - iam:PassRole
               Resource:
                 - !Ref ProcessorTaskDefinition
                 - !GetAtt WorkerCluster.Arn
                 - !GetAtt TaskExecutionRole.Arn
                 - !GetAtt ProcessorTaskRole.Arn
-                - '*'
       Events:
         TaskQueue:
           Type: SQS
@@ -438,9 +425,13 @@ Resources:
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
           ECS_CLUSTER: !Ref WorkerCluster
           PROCESSOR_TASK_DEFINITION: !Ref ProcessorTaskDefinition
-          VPC_ID: !Ref DefaultVpcId
-          SECURITY_GROUP_ID: !Ref DefaultSecurityGroupId
-          SUBNET_IDS: !Ref DefaultSubnetIds
+          VPC_ID: !Ref WorkerVPC
+          SECURITY_GROUP_ID: !Ref WorkerSecurityGroup
+          SUBNET_IDS: !Join
+            - ','
+            - - !Ref PublicSubnet1
+              - !Ref PublicSubnet2
+              - !Ref PublicSubnet3
   CompletionHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -652,17 +643,99 @@ Resources:
       MessageRetentionPeriod: 345600
       VisibilityTimeout: 60
       DelaySeconds: 5
-    # -----------------------------------------------------------------------------------------------------------------------
-    # NETWORK
-    # -----------------------------------------------------------------------------------------------------------------------
-    # VPC Endpoints
+  # -----------------------------------------------------------------------------------------------------------------------
+  # NETWORK
+  # -----------------------------------------------------------------------------------------------------------------------
+  # VPC
+  WorkerVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref WorkerVPC
+      InternetGatewayId: !Ref InternetGateway
+  # Public Subnet
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    DependsOn: WorkerVPC
+    Properties:
+      VpcId: !Ref WorkerVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  # Route Table
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref WorkerVPC
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # Security Group
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Fargate workers
+      VpcId: !Ref WorkerVPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
+  # VPC Endpoints
   S3Endpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
       ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
-      VpcId: !Ref DefaultVpcId
+      VpcId: !Ref WorkerVPC
       RouteTableIds:
-        - !Ref DefaultRouteTableId
+        - !Ref PublicRouteTable
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -683,9 +756,9 @@ Resources:
     Type: AWS::EC2::VPCEndpoint
     Properties:
       ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
-      VpcId: !Ref DefaultVpcId
+      VpcId: !Ref WorkerVPC
       RouteTableIds:
-        - !Ref DefaultRouteTableId
+        - !Ref PublicRouteTable
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -754,7 +827,6 @@ Resources:
                 - ecs-tasks.amazonaws.com
                 - ecr.amazonaws.com
             Action:
-              - ecr:GetAuthorizationToken
               - ecr:GetDownloadUrlForLayer
               - ecr:BatchGetImage
               - ecr:BatchCheckLayerAvailability
@@ -802,23 +874,6 @@ Resources:
                   - ecs:DescribeTasks
                   - ecs:ListContainerInstances
                 Resource: !GetAtt WorkerCluster.Arn
-              - Effect: Allow
-                Action:
-                  - ecr:GetAuthorizationToken
-                  - ecr:BatchCheckLayerAvailability
-                  - ecr:GetDownloadUrlForLayer
-                  - ecr:BatchGetImage
-                Resource: '*'
-        - PolicyName: NetworkAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ec2:DescribeNetworkInterfaces
-                  - ec2:DescribeSubnets
-                  - ec2:DescribeVpcs
-                Resource: '*'
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -837,27 +892,34 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
       Policies:
-        - PolicyName: NetworkingAccess
+        - PolicyName: ECRAccess
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
-                  - ec2:CreateNetworkInterface
-                  - ec2:DescribeNetworkInterfaces
-                  - ec2:DeleteNetworkInterface
-                  - ec2:AttachNetworkInterface
-                  - ec2:DetachNetworkInterface
-                  - ec2:DescribeSubnets
-                  - ec2:DescribeVpcs
-                  - ec2:AssignPrivateIpAddresses
-                  - ec2:UnassignPrivateIpAddresses
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
                 Resource: '*'
+        - PolicyName: ECSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
               - Effect: Allow
                 Action:
-                  - ec2:CreateTags
-                Resource:
-                  - arn:aws:ec2:*:*:network-interface/*
+                  - ecs:RunTask
+                  - ecs:StopTask
+                  - ecs:DescribeTasks
+                Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref AppId
   ProcessorTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     DependsOn:
@@ -871,9 +933,6 @@ Resources:
       Memory: '16384'
       ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
       TaskRoleArn: !GetAtt ProcessorTaskRole.Arn
-      RuntimePlatform:
-        CpuArchitecture: ARM64
-        OperatingSystemFamily: LINUX
       ContainerDefinitions:
         - Name: processor
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${WorkerRepository}:latest
@@ -918,3 +977,6 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref AppId
+  # -----------------------------------------------------------------------------------------------------------------------
+  # Metadata
+  # -----------------------------------------------------------------------------------------------------------------------
