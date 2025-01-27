@@ -1,10 +1,10 @@
-FROM golang:1.21-alpine AS builder
+FROM --platform=linux/arm64 golang:1.21-alpine AS builder
 
 WORKDIR /app
 COPY . .
-RUN go build -o processor ./cmd/processor
+RUN GOOS=linux GOARCH=arm64 go build -o processor ./cmd/processor
 
-FROM alpine:latest
+FROM --platform=linux/arm64 alpine:latest
 
 RUN mkdir -p /tmp/footage
 

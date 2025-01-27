@@ -12,10 +12,13 @@ phases:
       
   pre_build:
     commands:
-
       - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://127.0.0.1:2375 --storage-driver=overlay2 &
       - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
-
+      
+      - docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+      - docker buildx create --name mybuilder --driver docker-container --bootstrap
+      - docker buildx use mybuilder
+      
       - echo "Logging in to Amazon ECR..."
       - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
       
@@ -28,22 +31,18 @@ phases:
       - cd ..
       
       - cd workers/processor
-      - go build -o processor ./cmd/processor
+      - GOOS=linux GOARCH=arm64 go build -o processor ./cmd/processor
       
-      - echo "Building Docker image..."
+      - echo "Building Docker image for ARM64..."
       - export BUILD_TIME=$(date +%Y%m%d%H%M%S)
-      - docker build -t ${ECR_REPOSITORY}:${BUILD_TIME} .
-      - docker tag ${ECR_REPOSITORY}:${BUILD_TIME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_TIME}
-      - docker tag ${ECR_REPOSITORY}:${BUILD_TIME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
+      - docker buildx build --platform linux/arm64 \
+          -t ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_TIME} \
+          -t ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest \
+          --push .
       - cd ../..
       
   post_build:
     commands:
-
-      - echo "Pushing Docker image..."
-      - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_TIME}
-      - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
-
       - cd nodejs
       - rm -rf node_modules
       - npm prune --omit=dev --quiet

@@ -655,7 +655,7 @@ Resources:
     # -----------------------------------------------------------------------------------------------------------------------
     # NETWORK
     # -----------------------------------------------------------------------------------------------------------------------
-  # VPC Endpoints
+    # VPC Endpoints
   S3Endpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -837,29 +837,6 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
       Policies:
-        - PolicyName: ECRAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ecr:GetAuthorizationToken
-                  - ecr:BatchCheckLayerAvailability
-                  - ecr:GetDownloadUrlForLayer
-                  - ecr:BatchGetImage
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: '*'
-        - PolicyName: ECSAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ecs:RunTask
-                  - ecs:StopTask
-                  - ecs:DescribeTasks
-                Resource: '*'
         - PolicyName: NetworkingAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -879,13 +856,8 @@ Resources:
               - Effect: Allow
                 Action:
                   - ec2:CreateTags
-                Resource: 
+                Resource:
                   - arn:aws:ec2:*:*:network-interface/*
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref AppId
   ProcessorTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     DependsOn:
@@ -899,6 +871,9 @@ Resources:
       Memory: '16384'
       ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
       TaskRoleArn: !GetAtt ProcessorTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
       ContainerDefinitions:
         - Name: processor
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${WorkerRepository}:latest
@@ -943,36 +918,3 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref AppId
-Metadata:
-  AWS::Composer::Groups:
-    Group:
-      Label: Authentication & Authorization
-      Members:
-        - UserPoolClient
-        - UserPool
-        - AuthCache
-    Group2:
-      Label: Worker
-      Members:
-        - ProcessorTaskDefinition
-        - DynamoDBEndpoint
-        - TaskExecutionRole
-        - S3Endpoint
-        - WorkerCluster
-        - WorkerSecurityGroup
-    Group6:
-      Label: Application
-      Members:
-        - Group7
-        - Group
-        - Group3
-    Group7:
-      Label: Request Handlers
-      Members:
-        - UploadHandler
-        - IdentityHandler
-    Group3:
-      Label: APIs
-      Members:
-        - UserActionsAPIs
-        - AuthAPIs
