@@ -438,7 +438,7 @@ Resources:
           ECS_CLUSTER: !Ref WorkerCluster
           PROCESSOR_TASK_DEFINITION: !Ref ProcessorTaskDefinition
           VPC_ID: !Ref DefaultVpcId
-          SECURITY_GROUP_ID: !Ref WorkerSecurityGroup
+          SECURITY_GROUP_ID: !Ref DefaultSecurityGroupId
           SUBNET_IDS: !Ref DefaultSubnetIds
   CompletionHandler:
     Type: AWS::Serverless::Function
