@@ -411,6 +411,7 @@ Resources:
                 - !Ref ProcessorTaskDefinition
                 - !GetAtt WorkerCluster.Arn
                 - !GetAtt TaskExecutionRole.Arn
+                - !GetAtt ProcessorTaskRole.Arn 
       Events:
         TaskQueue:
           Type: SQS
@@ -817,6 +818,7 @@ Resources:
             Principal:
               AWS: 
               - !GetAtt TaskExecutionRole.Arn
+              - !GetAtt ProcessorTaskRole.Arn
               Service:
                 - ecs-tasks.amazonaws.com
                 - ecr.amazonaws.com
