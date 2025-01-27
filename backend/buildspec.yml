@@ -29,16 +29,24 @@ phases:
       
       - cd workers/processor
       - go build -o processor ./cmd/processor
+      
       - echo "Building Docker image..."
-      - docker build -t ${ECR_REPOSITORY} .
-      - docker tag ${ECR_REPOSITORY}:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
+      - export BUILD_TIME=$(date +%Y%m%d%H%M%S)
+      - docker build -t ${ECR_REPOSITORY}:${BUILD_TIME} .
+      - docker tag ${ECR_REPOSITORY}:${BUILD_TIME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_TIME}
+      - docker tag ${ECR_REPOSITORY}:${BUILD_TIME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
       - cd ../..
       
   post_build:
     commands:
 
       - echo "Pushing Docker image..."
+      - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_TIME}
       - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
+
+      - aws ecs describe-task-definition --task-definition ${PROCESSOR_TASK_DEFINITION} > task-def.json
+      - jq '.taskDefinition | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities)' task-def.json > new-task-def.json
+      - aws ecs register-task-definition --cli-input-json file://new-task-def.json
 
       - cd nodejs
       - rm -rf node_modules
@@ -52,6 +60,4 @@ artifacts:
     - nodejs/dist/**/*
     - nodejs/package.json
     - nodejs/package-lock.json
-    - workers/processor/processor
-    - workers/processor/Dockerfile
   base-directory: backend
