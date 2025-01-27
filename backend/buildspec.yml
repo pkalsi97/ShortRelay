@@ -12,10 +12,8 @@ phases:
       
   pre_build:
     commands:
-
       - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://127.0.0.1:2375 --storage-driver=overlay2 &
       - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
-
       - echo "Logging in to Amazon ECR..."
       - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
       
@@ -31,22 +29,13 @@ phases:
       - go build -o processor ./cmd/processor
       
       - echo "Building Docker image..."
-      - export BUILD_TIME=$(date +%Y%m%d%H%M%S)
-      - docker build -t ${ECR_REPOSITORY}:${BUILD_TIME} .
-      - docker tag ${ECR_REPOSITORY}:${BUILD_TIME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_TIME}
-      - docker tag ${ECR_REPOSITORY}:${BUILD_TIME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
+      - docker build -t ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest .
       - cd ../..
       
   post_build:
     commands:
-
       - echo "Pushing Docker image..."
-      - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_TIME}
       - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
-
-      - aws ecs describe-task-definition --task-definition ${PROCESSOR_TASK_DEFINITION} > task-def.json
-      - jq '.taskDefinition | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities)' task-def.json > new-task-def.json
-      - aws ecs register-task-definition --cli-input-json file://new-task-def.json
 
       - cd nodejs
       - rm -rf node_modules
