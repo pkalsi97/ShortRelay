@@ -768,6 +768,7 @@ Resources:
                 - ecs-tasks.amazonaws.com
                 - ecr.amazonaws.com
             Action:
+              - ecr:GetAuthorizationToken
               - ecr:GetDownloadUrlForLayer
               - ecr:BatchGetImage
               - ecr:BatchCheckLayerAvailability
@@ -815,6 +816,23 @@ Resources:
                   - ecs:DescribeTasks
                   - ecs:ListContainerInstances
                 Resource: !GetAtt WorkerCluster.Arn
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                Resource: '*'
+        - PolicyName: NetworkAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcs
+                Resource: '*'
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -856,6 +874,27 @@ Resources:
                   - ecs:StopTask
                   - ecs:DescribeTasks
                 Resource: '*'
+        - PolicyName: NetworkingAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AttachNetworkInterface
+                  - ec2:DetachNetworkInterface
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcs
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:CreateTags
+                Resource: 
+                  - arn:aws:ec2:*:*:network-interface/*
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -924,8 +963,8 @@ Metadata:
       Label: Authentication & Authorization
       Members:
         - UserPoolClient
-        - AuthCache
         - UserPool
+        - AuthCache
     Group2:
       Label: Worker
       Members:
@@ -935,22 +974,19 @@ Metadata:
         - S3Endpoint
         - WorkerCluster
         - WorkerSecurityGroup
+    Group6:
+      Label: Application
+      Members:
+        - Group7
+        - Group
+        - Group3
+    Group7:
+      Label: Request Handlers
+      Members:
+        - UploadHandler
+        - IdentityHandler
     Group3:
-      Label: Event Pipeline
+      Label: APIs
       Members:
-        - UploadEventQueue
-        - CompletionQueue
-        - EventHandler
-        - CompletionHandler
-    Group4:
-      Label: Task Management
-      Members:
-        - TaskQueue
-        - TaskHandler
-        - Group2
-    Group5:
-      Label: Group5
-      Members:
-        - MetadataStorage
-        - TransportStorage
-        - ContentStorage
+        - UserActionsAPIs
+        - AuthAPIs
