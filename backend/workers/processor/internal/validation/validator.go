@@ -2,7 +2,6 @@ package validation
 
 import (
     "encoding/json"
-    "fmt"
     "os"
     "os/exec"
     "path/filepath"
