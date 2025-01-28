@@ -8,15 +8,15 @@ type ffprobeFormat struct {
 }
 
 type ffprobeStream struct {
-    CodecType         string `json:"codec_type"`
-    CodecName         string `json:"codec_name"`
-    Width            int    `json:"width"`
-    Height           int    `json:"height"`
-    DisplayAspectRatio string `json:"display_aspect_ratio"`
-    RFrameRate        string `json:"r_frame_rate"`
-    BitRate          string `json:"bit_rate"`
-    NbFrames         string `json:"nb_frames"`
-    ColorSpace       string `json:"color_space"`
+    CodecType           string `json:"codec_type"`
+    CodecName           string `json:"codec_name"`
+    Width               int    `json:"width"`
+    Height              int    `json:"height"`
+    DisplayAspectRatio  string `json:"display_aspect_ratio"`
+    RFrameRate          string `json:"r_frame_rate"`
+    BitRate             string `json:"bit_rate"`
+    NbFrames            string `json:"nb_frames"`
+    ColorSpace          string `json:"color_space"`
 }
 
 type ffprobeData struct {

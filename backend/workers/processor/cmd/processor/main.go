@@ -100,13 +100,46 @@ func main() {
     log.Printf("Stream Validation Result: %+v", streamResult)
 
     extractor := validation.NewMetadataExtractor()
-    technical, quality, content, err := extractor.ExtractMetadata(tempFile)
+    metadata, err := extractor.GetContentMetadata(tempFile)
     if err != nil {
-        log.Fatalf("Failed to extract metadata: %v", err)
+        log.Printf("Warning: metadata extraction had errors: %v", err)
     }
-    log.Printf("Technical Metadata: %+v", technical)
-    log.Printf("Quality Metrics: %+v", quality)
-    log.Printf("Content Metadata: %+v", content)
+    log.Printf(`
+        === Media File Analysis ===
+
+        Technical Metadata:
+        - Container Format: %s
+        - Video Codec: %s
+        - Audio Codec: %s
+        - Duration: %d seconds
+        - Bitrate: %d bps
+        - Frame Rate: %.2f fps
+        - Resolution: %s
+        - Aspect Ratio: %s
+        - Color Space: %s
+
+        Quality Metrics:
+        - Video Quality Score: %d
+        - Audio Quality Score: %d
+        - Is Corrupted: %t
+        - Missing Frames: %t
+        - Audio Sync: %t
+        `,
+            metadata.Technical.ContainerFormat,
+            metadata.Technical.VideoCodec,
+            metadata.Technical.AudioCodec,
+            metadata.Technical.Duration,
+            metadata.Technical.Bitrate,
+            metadata.Technical.FrameRate,
+            metadata.Technical.Resolution,
+            metadata.Technical.AspectRatio,
+            metadata.Technical.ColorSpace,
+            metadata.Quality.VideoQualityScore,
+            metadata.Quality.AudioQualityScore,
+            metadata.Quality.IsCorrupted,
+            metadata.Quality.MissingFrames,
+            metadata.Quality.AudioSync,
+        )
 
     defer func() {
         if err := os.RemoveAll(workDir); err != nil {

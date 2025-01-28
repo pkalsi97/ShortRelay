@@ -3,11 +3,9 @@ package validation
 import (
     "encoding/json"
     "fmt"
-    "os"
     "os/exec"
     "strconv"
     "strings"
-    "time"
 
     "github.com/pkalsi97/ShortRelay/backend/workers/processor/internal/models"
 )
@@ -18,192 +16,194 @@ func NewMetadataExtractor() *MetadataExtractor {
     return &MetadataExtractor{}
 }
 
-func (e *MetadataExtractor) ExtractMetadata(filePath string) (*models.TechnicalMetadata, *models.QualityMetrics, *models.ContentMetadata, error) {
-    probeData, err := e.runFFprobe(filePath)
+func (e *MetadataExtractor) GetContentMetadata(filepath string) (*models.ContentMetadataResult, error) {
+    ffdata, err := e.runFFprobe(filepath)
     if err != nil {
-        return nil, nil, nil, fmt.Errorf("ffprobe failed: %v", err)
+        return nil, fmt.Errorf("failed to run ffprobe: %v", err)
     }
 
-    technical := e.extractTechnicalMetadata(probeData)
-    quality := e.extractQualityMetrics(probeData, filePath)
-    content := e.extractContentMetadata(probeData, filePath)
+    result := &models.ContentMetadataResult{
+        Technical: &models.TechnicalMetadata{},
+        Quality:   &models.QualityMetrics{},
+    }
 
-    return technical, quality, content, nil
+    e.extractTechnicalMetadata(ffdata, result.Technical)
+    e.extractQualityMetrics(filepath, ffdata, result.Quality)
+
+    return result, nil
 }
 
-func (e *MetadataExtractor) runFFprobe(filePath string) (*ffprobeData, error) {
+func (e *MetadataExtractor) runFFprobe(filepath string) (ffprobeData, error) {
+    var data ffprobeData
+
     cmd := exec.Command("ffprobe",
         "-v", "quiet",
         "-print_format", "json",
         "-show_format",
         "-show_streams",
-        filePath)
+        filepath)
 
     output, err := cmd.Output()
     if err != nil {
-        return nil, err
+        return data, fmt.Errorf("ffprobe execution failed: %v", err)
     }
 
-    var data ffprobeData
-    if err := json.Unmarshal(output, &data); err != nil {
-        return nil, err
+    err = json.Unmarshal(output, &data)
+    if err != nil {
+        return data, fmt.Errorf("failed to parse ffprobe output: %v", err)
     }
 
-    return &data, nil
+    return data, nil
 }
 
-func (e *MetadataExtractor) extractTechnicalMetadata(data *ffprobeData) *models.TechnicalMetadata {
-    var videoStream, audioStream *ffprobeStream
-    for _, stream := range data.Streams {
-        if stream.CodecType == "video" && videoStream == nil {
-            videoStream = &stream
-        } else if stream.CodecType == "audio" && audioStream == nil {
-            audioStream = &stream
-        }
+func (e *MetadataExtractor) extractTechnicalMetadata(ffdata ffprobeData, technical *models.TechnicalMetadata) {
+    technical.ContainerFormat = strings.Split(ffdata.Format.FormatName, ",")[0]
+
+    if duration, err := strconv.ParseFloat(ffdata.Format.Duration, 64); err == nil {
+        technical.Duration = int64(duration)
     }
 
-    duration, _ := strconv.ParseFloat(data.Format.Duration, 64)
-    bitrate, _ := strconv.ParseInt(data.Format.BitRate, 10, 64)
-    frameRate := 0.0
-    if videoStream != nil {
-        if parts := strings.Split(videoStream.RFrameRate, "/"); len(parts) == 2 {
-            num, _ := strconv.ParseFloat(parts[0], 64)
-            den, _ := strconv.ParseFloat(parts[1], 64)
-            if den > 0 {
-                frameRate = num / den
+    if bitrate, err := strconv.ParseInt(ffdata.Format.BitRate, 10, 64); err == nil {
+        technical.Bitrate = bitrate
+    }
+
+    for _, stream := range ffdata.Streams {
+        switch stream.CodecType {
+        case "video":
+            e.extractVideoMetadata(stream, technical)
+        case "audio":
+            e.extractAudioMetadata(stream, technical)
+        }
+    }
+}
+
+func (e *MetadataExtractor) extractVideoMetadata(stream ffprobeStream, technical *models.TechnicalMetadata) {
+    technical.VideoCodec = stream.CodecName
+
+    if frameRate := stream.RFrameRate; frameRate != "" {
+        if nums := strings.Split(frameRate, "/"); len(nums) == 2 {
+            num1, err1 := strconv.ParseFloat(nums[0], 64)
+            num2, err2 := strconv.ParseFloat(nums[1], 64)
+            if err1 == nil && err2 == nil && num2 != 0 {
+                technical.FrameRate = num1 / num2
             }
         }
     }
 
-    resolution := "0x0"
-    if videoStream != nil {
-        resolution = fmt.Sprintf("%dx%d", videoStream.Width, videoStream.Height)
+    if stream.Width > 0 && stream.Height > 0 {
+        technical.Resolution = fmt.Sprintf("%dx%d", stream.Width, stream.Height)
     }
 
-    return &models.TechnicalMetadata{
-        ContainerFormat: strings.Split(data.Format.FormatName, ",")[0],
-        VideoCodec:      getCodecName(videoStream),
-        AudioCodec:      getCodecName(audioStream),
-        Duration:        int64(duration),
-        Bitrate:        bitrate,
-        FrameRate:      frameRate,
-        Resolution:     resolution,
-        AspectRatio:    getAspectRatio(videoStream),
-        ColorSpace:     getColorSpace(videoStream),
-    }
+    technical.AspectRatio = stream.DisplayAspectRatio
+    technical.ColorSpace = stream.ColorSpace
 }
 
-func (e *MetadataExtractor) extractQualityMetrics(data *ffprobeData, filePath string) *models.QualityMetrics {
-    var videoStream, audioStream *ffprobeStream
-    for _, stream := range data.Streams {
-        if stream.CodecType == "video" && videoStream == nil {
-            videoStream = &stream
-        } else if stream.CodecType == "audio" && audioStream == nil {
-            audioStream = &stream
+func (e *MetadataExtractor) extractAudioMetadata(stream ffprobeStream, technical *models.TechnicalMetadata) {
+    technical.AudioCodec = stream.CodecName
+}
+
+func (e *MetadataExtractor) extractQualityMetrics(filepath string, ffdata ffprobeData, quality *models.QualityMetrics) {
+
+    quality.VideoQualityScore = -1
+    quality.AudioQualityScore = -1
+    quality.IsCorrupted = false
+    quality.MissingFrames = false
+    quality.AudioSync = true
+
+    if err := e.checkVideoIntegrity(filepath); err != nil {
+        quality.IsCorrupted = true
+    }
+
+    for _, stream := range ffdata.Streams {
+        if stream.CodecType == "video" {
+            quality.VideoQualityScore = e.calculateVideoQualityScore(stream)
+        } else if stream.CodecType == "audio" {
+            quality.AudioQualityScore = e.calculateAudioQualityScore(stream)
         }
     }
 
-    isPlayable, _ := e.checkPlayability(filePath)
-
-    return &models.QualityMetrics{
-        VideoQualityScore: calculateVideoQuality(videoStream),
-        AudioQualityScore: calculateAudioQuality(audioStream),
-        IsCorrupted:      !isPlayable,
-        MissingFrames:    hasMissingFrames(videoStream),
-        AudioSync:        true,
-    }
+    quality.AudioSync = e.checkAudioSync(filepath)
 }
 
-func (e *MetadataExtractor) extractContentMetadata(data *ffprobeData, filePath string) *models.ContentMetadata {
-    fileInfo, err := os.Stat(filePath)
-    lastModified := "N/A"
-    if err == nil {
-        lastModified = fileInfo.ModTime().Format(time.RFC3339)
-    }
-
-    creationDate := "N/A"
-    if data.Format.Tags != nil {
-        if ct, ok := data.Format.Tags["creation_time"]; ok {
-            creationDate = ct
-        }
-    }
-
-    return &models.ContentMetadata{
-        CreationDate: creationDate,
-        LastModified: lastModified,
-    }
-}
-
-func (e *MetadataExtractor) checkPlayability(filePath string) (bool, error) {
+func (e *MetadataExtractor) checkVideoIntegrity(filepath string) error {
     cmd := exec.Command("ffmpeg",
         "-v", "error",
-        "-i", filePath,
+        "-i", filepath,
         "-f", "null",
-        "-",
-    )
+        "-")
 
-    if err := cmd.Run(); err != nil {
-        return false, err
+    output, err := cmd.CombinedOutput()
+    if err != nil || len(output) > 0 {
+        return fmt.Errorf("video integrity check failed: %v", string(output))
     }
-    return true, nil
+    return nil
 }
 
-// Helper functions
-func getCodecName(stream *ffprobeStream) string {
-    if stream == nil {
-        return "N/A"
+func (e *MetadataExtractor) calculateVideoQualityScore(stream ffprobeStream) int64 {
+    var score int64 = 50 
+
+    if stream.Width >= 1920 && stream.Height >= 1080 {
+        score += 20
+    } else if stream.Width >= 1280 && stream.Height >= 720 {
+        score += 10
     }
-    return stream.CodecName
+
+
+    if bitrate, err := strconv.ParseInt(stream.BitRate, 10, 64); err == nil {
+        if bitrate > 5000000 {
+            score += 20
+        } else if bitrate > 2000000 {
+            score += 10
+        }
+    }
+
+
+    if nums := strings.Split(stream.RFrameRate, "/"); len(nums) == 2 {
+        num1, err1 := strconv.ParseFloat(nums[0], 64)
+        num2, err2 := strconv.ParseFloat(nums[1], 64)
+        if err1 == nil && err2 == nil && num2 != 0 {
+            fps := num1 / num2
+            if fps >= 30 {
+                score += 10
+            }
+        }
+    }
+
+    if score > 100 {
+        score = 100
+    }
+    return score
 }
 
-func getAspectRatio(stream *ffprobeStream) string {
-    if stream == nil || stream.DisplayAspectRatio == "" {
-        return "N/A"
-    }
-    return stream.DisplayAspectRatio
-}
-
-func getColorSpace(stream *ffprobeStream) string {
-    if stream == nil || stream.ColorSpace == "" {
-        return "N/A"
-    }
-    return stream.ColorSpace
-}
-
-func calculateVideoQuality(stream *ffprobeStream) int64 {
-    if stream == nil {
-        return 0
+func (e *MetadataExtractor) calculateAudioQualityScore(stream ffprobeStream) int64 {
+    var score int64 = 50
+    if bitrate, err := strconv.ParseInt(stream.BitRate, 10, 64); err == nil {
+        if bitrate > 320000 {
+            score += 25
+        } else if bitrate > 192000 {
+            score += 15
+        } else if bitrate > 128000 {
+            score += 10
+        }
     }
     
-    width := float64(stream.Width)
-    height := float64(stream.Height)
-    
-    resolutionScore := (width * height) / (1920 * 1080) * 100
-    if resolutionScore > 100 {
-        resolutionScore = 100
+    if score > 100 {
+        score = 100
     }
-    
-    return int64(resolutionScore)
+    return score
 }
 
-func calculateAudioQuality(stream *ffprobeStream) int64 {
-    if stream == nil {
-        return 0
-    }
+func (e *MetadataExtractor) checkAudioSync(filepath string) bool {
+    cmd := exec.Command("ffmpeg",
+        "-v", "error",
+        "-i", filepath,
+        "-af", "silencedetect=noise=-50dB:d=0.1",
+        "-f", "null",
+        "-")
 
-    bitrate, _ := strconv.ParseInt(stream.BitRate, 10, 64)
-
-    qualityScore := (float64(bitrate) / 320000) * 100
-    if qualityScore > 100 {
-        qualityScore = 100
-    }
-    
-    return int64(qualityScore)
-}
-
-func hasMissingFrames(stream *ffprobeStream) bool {
-    if stream == nil {
+    output, err := cmd.CombinedOutput()
+    if err != nil || len(output) > 0 {
         return false
     }
-    return stream.NbFrames == ""
+    return true
 }

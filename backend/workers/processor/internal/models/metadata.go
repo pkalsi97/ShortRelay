@@ -15,7 +15,7 @@ type StreamValidationResult struct {
     HasAudioStream   bool   `json:"hasAudioStream"`
     IsPlayable       bool   `json:"isPlayable"`
     HasCorruptFrames bool   `json:"hasCorruptFrames"`
-	Error            string `json:"error"`
+    Error            string `json:"error"`
 }
 
 type TechnicalMetadata struct {
@@ -30,16 +30,15 @@ type TechnicalMetadata struct {
     ColorSpace      string  `json:"colorSpace"`
 }
 
-type ContentMetadata struct {
-	CreationDate string  `json:"creationDate"`
-	LastModified string  `json:"lastModified"`
-}
-
 type QualityMetrics struct {
-	VideoQualityScore int64	`json:"videoQualityScore"`
-	AudioQualityScore int64 `json:"audioQualityScore"`
-	IsCorrupted       bool  `json:"isCorrupted"`
-	MissingFrames     bool  `json:"missingFrames"`
-	AudioSync         bool  `json:"audioSync"`
+    VideoQualityScore int64 `json:"videoQualityScore"`
+    AudioQualityScore int64 `json:"audioQualityScore"`
+    IsCorrupted       bool  `json:"isCorrupted"`
+    MissingFrames     bool  `json:"missingFrames"`
+    AudioSync         bool  `json:"audioSync"`
 }
 
+type ContentMetadataResult struct {
+    Technical *TechnicalMetadata `json:"technical"`
+    Quality   *QualityMetrics    `json:"quality"`
+}
