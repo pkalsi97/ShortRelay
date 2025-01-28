@@ -938,10 +938,6 @@ Resources:
               Value: !Ref ContentStorage
             - Name: METADATA_TABLE
               Value: !Ref MetadataStorage
-            - Name: FFMPEG_THREADS
-              Value: '8'
-            - Name: FFMPEG_THREAD_QUEUE_SIZE
-              Value: '512'
             - Name: FOOTAGE_DIR
               Value: /tmp/footage
           HealthCheck:
