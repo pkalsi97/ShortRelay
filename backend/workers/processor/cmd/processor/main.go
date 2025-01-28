@@ -99,6 +99,14 @@ func main() {
     }
     log.Printf("Stream Validation Result: %+v", streamResult)
 
+    extractor := validation.NewMetadataExtractor()
+    technical, quality, content, err := extractor.ExtractMetadata(tempFile)
+    if err != nil {
+        log.Fatalf("Failed to extract metadata: %v", err)
+    }
+    log.Printf("Technical Metadata: %+v", technical)
+    log.Printf("Quality Metrics: %+v", quality)
+    log.Printf("Content Metadata: %+v", content)
 
     defer func() {
         if err := os.RemoveAll(workDir); err != nil {
