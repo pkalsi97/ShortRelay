@@ -3,6 +3,7 @@ package transcoder
 import (
     "fmt"
     "os"
+    "log"
     "os/exec"
     "path/filepath"
     "strings"
