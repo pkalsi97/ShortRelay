@@ -14,7 +14,6 @@ const config = {
 };
 
 export const taskHandler = async (event: SQSEvent): Promise<void> => {
-    console.warn(config);
     for (const record of event.Records) {
         try {
             const task: Task = JSON.parse(record.body);
@@ -52,6 +51,9 @@ export const taskHandler = async (event: SQSEvent): Promise<void> => {
                                     name: 'ASSET_ID',
                                     value: task.assetId,
                                 },
+                                {
+
+                                },
                             ],
                         },
                     ],
@@ -59,7 +61,6 @@ export const taskHandler = async (event: SQSEvent): Promise<void> => {
             });
 
             const response = await ecsClient.send(command);
-            console.warn(response);
 
         } catch (error) {
             console.error('Error processing task:', error);
@@ -71,3 +72,5 @@ export const taskHandler = async (event: SQSEvent): Promise<void> => {
 // Multiple AZs
 // Multiple subnets
 // Both FARGATE and FARGATE_SPOT providers
+// instance limit 
+// dql
