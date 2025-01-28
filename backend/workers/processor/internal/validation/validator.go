@@ -108,17 +108,6 @@ func (v *Validator) ValidateStream(filePath string) (*models.StreamValidationRes
     }, nil
 }
 
-
-type ffprobeData struct {
-    Format struct {
-        FormatName string `json:"format_name"`
-    } `json:"format"`
-    Streams []struct {
-        CodecType string `json:"codec_type"`
-        CodecName string `json:"codec_name"`
-    } `json:"streams"`
-}
-
 func (v *Validator) runFFprobe(filePath string) (*ffprobeData, error) {
     cmd := exec.Command("ffprobe",
         "-v", "quiet",
