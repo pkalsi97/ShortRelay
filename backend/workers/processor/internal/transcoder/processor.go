@@ -2,7 +2,6 @@ package transcoder
 
 import (
     "fmt"
-    "log"
     "os"
     "os/exec"
     "path/filepath"
@@ -13,7 +12,7 @@ type Processor struct {
     Resolutions []Resolution
     VideoInfo   *VideoInfo
 }
-
+ 
 func NewProcessor(inputPath string, resolutions []Resolution) (*Processor, error) {
     dir := filepath.Dir(inputPath)
     filename := filepath.Base(inputPath)
@@ -44,10 +43,9 @@ func NewProcessor(inputPath string, resolutions []Resolution) (*Processor, error
     }, nil
 }
 
-func (p *Processor) GenerateThumbnail(inputPath string) error {
-    log.Printf("Generating thumbnail...")
-    
+func (p *Processor) GenerateThumbnail(inputPath string) error {    
     args := []string{
+        "-v", "error",
         "-y",
         "-ss", fmt.Sprintf("%.2f", p.VideoInfo.Duration/2),
         "-i", inputPath,
@@ -87,6 +85,7 @@ func (p *Processor) GenerateMP4Files(inputPath string) error {
 
 func (p *Processor) extractAudio(inputPath string) error {
     args := []string{
+        "-v", "error",
         "-i", inputPath,
         "-vn",
         "-c:a", "aac",
@@ -114,6 +113,7 @@ func (p *Processor) generateMP4(inputPath string, res Resolution) error {
     filterComplex := fmt.Sprintf("%s,format=yuv420p", scaleFilter)
 
     args := []string{
+        "-v", "error",
         "-i", inputPath,
         "-an",
         "-c:v", "libx264",
@@ -183,6 +183,7 @@ func (p *Processor) generateHLSStream(res Resolution) error {
     }
 
     args = append(args,
+        "-v", "error",
         "-c:v", "copy",
         "-c:a", "copy",
         "-f", "hls",
@@ -209,6 +210,7 @@ func (p *Processor) generateHLSStream(res Resolution) error {
 func (p *Processor) generateAudioStream() error {
     audioDir := filepath.Join(p.Paths.HLSDir, "audio")
     args := []string{
+        "-v", "error",
         "-i", filepath.Join(p.Paths.MP4Dir, "audio.m4a"),
         "-c:a", "copy",
         "-f", "hls",
@@ -265,11 +267,9 @@ func (p *Processor) GenerateIframePlaylists() error {
     }
 
     for _, res := range p.Resolutions {
-        log.Printf("Generating IFRAME playlist for %s...", res.Name)
         if err := p.generateIframePlaylist(res); err != nil {
             return err
         }
-        log.Printf("Completed IFRAME playlist for %s", res.Name)
     }
 
     return p.generateMasterIframePlaylist()
@@ -283,6 +283,7 @@ func (p *Processor) generateIframePlaylist(res Resolution) error {
 
     inputFile := filepath.Join(p.Paths.MP4Dir, fmt.Sprintf("%s.mp4", res.Name))
     args := []string{
+        "-v", "error",
         "-i", inputFile,
         "-c:v", "copy",
         "-an",
@@ -340,19 +341,19 @@ func Process(inputPath string, resolutions []Resolution) error {
     if err != nil {
         return err
     }
-
+    log.Printf("GenerateThumbnail")
     if err := processor.GenerateThumbnail(inputPath); err != nil {
         return err
     }
-
+    log.Printf("GenerateMP4Files")
     if err := processor.GenerateMP4Files(inputPath); err != nil {
         return err
     }
-
+    log.Printf("GenerateHLSPlaylists")
     if err := processor.GenerateHLSPlaylists(); err != nil {
         return err
     }
-
+    log.Printf("GenerateIframePlaylists")
     if err := processor.GenerateIframePlaylists(); err != nil {
         return err
     }
