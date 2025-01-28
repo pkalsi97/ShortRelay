@@ -1,21 +1,21 @@
 import crypto from 'crypto';
 
-import { Task, Location, TaskType, WorkerType } from '../types/task.type';
+import { Task, TaskType, WorkerType } from '../types/task.type';
 
 const createTask = (
     userId: string,
     assetId: string,
-    input: Location,
-    output: Location,
     type: TaskType,
+    inputKey: string,
+    outputKey: string,
     worker: WorkerType,
 ): Task => {
     return {
         taskId: `${type}-${crypto.randomUUID()}`,
         userId,
         assetId,
-        input,
-        output,
+        inputKey,
+        outputKey,
         type,
         worker,
         createdAt: new Date().toISOString(),

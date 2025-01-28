@@ -4,7 +4,7 @@ import { SQSEvent, SQSBatchResponse, SQSBatchItemFailure, S3Event } from 'aws-la
 
 import { ProcessingStage, MetadataService } from '../services/data/metadata-service';
 import { DbConfig } from '../types/db.types';
-import { TaskType, WorkerType, Task, Location } from '../types/task.type';
+import { TaskType, WorkerType, Task } from '../types/task.type';
 import { CustomError, Fault, ErrorName, exceptionHandlerFunction } from '../utils/error-handling';
 import { KeyOwner, KeyService } from '../utils/key-service';
 import { TaskService } from '../utils/task-creator';
@@ -53,17 +53,12 @@ export const eventHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> =
                             }
                             await MetadataService.updateProgress(userId, assetId, ProcessingStage.UPLOAD, true);
 
-                            const input:Location = {
-                                Key: key,
-                                Bucket: bucket,
-                            };
-
                             const task:Task = TaskService.createTask(
                                 userId,
                                 assetId,
-                                input,
-                                {},
                                 TaskType.TRANSCODE,
+                                key,
+                                key,
                                 WorkerType.PROCESSOR,
                             );
 

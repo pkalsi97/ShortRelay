@@ -16,8 +16,8 @@ export interface Task {
     taskId: string;
     userId: string;
     assetId: string;
-    input: Location;
-    output: Location;
+    inputKey: string;
+    outputKey: string;
     type: TaskType;
     worker: WorkerType;
     createdAt: string;

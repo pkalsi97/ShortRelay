@@ -52,7 +52,12 @@ export const taskHandler = async (event: SQSEvent): Promise<void> => {
                                     value: task.assetId,
                                 },
                                 {
-
+                                    name: 'INPUT_KEY',
+                                    value: task.inputKey,
+                                },
+                                {
+                                    name: 'OUTPUT_KEY',
+                                    value: task.outputKey,
                                 },
                             ],
                         },
@@ -74,3 +79,6 @@ export const taskHandler = async (event: SQSEvent): Promise<void> => {
 // Both FARGATE and FARGATE_SPOT providers
 // instance limit 
 // dql
+
+// dynamically calculate FFMPEG threads and queue size
+// auto scaling
