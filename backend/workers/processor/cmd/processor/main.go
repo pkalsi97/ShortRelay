@@ -9,6 +9,7 @@ import (
 
     "github.com/pkalsi97/ShortRelay/backend/workers/processor/internal/storage/s3"
     "github.com/pkalsi97/ShortRelay/backend/workers/processor/internal/validation"
+    "github.com/pkalsi97/ShortRelay/backend/workers/processor/internal/transcoder"
 )
 
 type Config struct {
@@ -140,6 +141,36 @@ func main() {
             metadata.Quality.MissingFrames,
             metadata.Quality.AudioSync,
         )
+        resolutions := []transcoder.Resolution{
+            {
+                Name:    "1080p",
+                Width:   1920,
+                Height:  1080,
+                Bitrate: "3000k",
+            },
+            {
+                Name:    "720p",
+                Width:   1280,
+                Height:  720,
+                Bitrate: "2000k",
+            },
+            {
+                Name:    "480p",
+                Width:   854,
+                Height:  480,
+                Bitrate: "800k",
+            },
+            {
+                Name:    "360p",
+                Width:   640,
+                Height:  360,
+                Bitrate: "400k",
+            },
+        }
+
+        if err := transcoder.Process(tempFile, resolutions); err != nil {
+            log.Fatalf("Transcoding failed: %v", err)
+        }
 
     defer func() {
         if err := os.RemoveAll(workDir); err != nil {
