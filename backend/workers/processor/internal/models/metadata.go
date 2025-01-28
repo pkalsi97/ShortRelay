@@ -19,15 +19,15 @@ type StreamValidationResult struct {
 }
 
 type TechnicalMetadata struct {
-	ContainerFormat string  `json:"containerFormat"`
-	VideoCodec      string  `json:"videoCodec"`
-	AudioCodec      string  `json:"audioCodec"`
-	Duration        int64   `json:"duration"`
-	Bitrate         int64   `json:"bitrate"`
-	frameRate       float64 `json:"frameRate"`
-	Resolution		string  `json:"resolution"`
-	AspectRatio     string  `json:"aspectRatio"`
-	ColorSpace      string  `json:"colorSpace"`
+    ContainerFormat string  `json:"containerFormat"`
+    VideoCodec      string  `json:"videoCodec"`
+    AudioCodec      string  `json:"audioCodec"`
+    Duration        int64   `json:"duration"`
+    Bitrate         int64   `json:"bitrate"`
+    FrameRate       float64 `json:"frameRate"`
+    Resolution      string  `json:"resolution"`
+    AspectRatio     string  `json:"aspectRatio"`
+    ColorSpace      string  `json:"colorSpace"`
 }
 
 type ContentMetadata struct {
