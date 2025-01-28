@@ -16,18 +16,6 @@ RUN curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-stati
     chmod +x /usr/local/bin/ffprobe && \
     rm -rf ffmpeg.tar.xz ffmpeg-*-arm64-static
 
-RUN echo "=== FFmpeg Version ===" && \
-    ffmpeg -version && \
-    echo "=== AAC Encoders ===" && \
-    ffmpeg -encoders | grep -i aac && \
-    echo "=== HLS Support ===" && \
-    ffmpeg -formats | grep -i hls && \
-    echo "=== DASH Support ===" && \
-    ffmpeg -formats | grep -i dash && \
-    echo "=== PNG Support ===" && \
-    ffmpeg -version | grep png && \
-    echo "=== Verification Complete ==="
-
 RUN mkdir -p /tmp/footage
 
 COPY --from=builder /app/processor /processor
