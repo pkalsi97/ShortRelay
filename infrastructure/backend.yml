@@ -913,8 +913,8 @@ Resources:
       RequiresCompatibilities:
         - FARGATE
       NetworkMode: awsvpc
-      Cpu: '8192'
-      Memory: '16384'
+      Cpu: '16384'
+      Memory: '32768'
       ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
       TaskRoleArn: !GetAtt ProcessorTaskRole.Arn
       RuntimePlatform:
@@ -924,9 +924,9 @@ Resources:
         - Name: processor
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${WorkerRepository}:latest
           Essential: true
-          Memory: 16384
+          Memory: 30720
           MemoryReservation: 15360
-          Cpu: 8192
+          Cpu: 16384
           Environment:
             - Name: AWS_REGION
               Value: !Ref AWS::Region
@@ -940,13 +940,8 @@ Resources:
               Value: !Ref MetadataStorage
             - Name: FOOTAGE_DIR
               Value: /tmp/footage
-          HealthCheck:
-            Command:
-              - CMD-SHELL
-              - exit 0
-            Interval: 30
-            Timeout: 5
-            Retries: 3
+            - Name: FFMPEG_THREADS
+              Value: "15"
           LogConfiguration:
             LogDriver: awslogs
             Options:
