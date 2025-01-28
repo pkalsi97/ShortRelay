@@ -7,6 +7,7 @@ import (
     "os/exec"
     "path/filepath"
     "strings"
+    "bufio"
 )
 
 type FFmpegComponents struct {
@@ -24,7 +25,7 @@ func checkFFmpegInstallation() (*FFmpegComponents, error) {
             "aac":     false,
         },
         Formats: map[string]bool{
-            "hls": false,
+            "hls":  false,
             "dash": false,
         },
         Libraries: map[string]bool{
@@ -32,37 +33,77 @@ func checkFFmpegInstallation() (*FFmpegComponents, error) {
         },
     }
 
-    if _, err := exec.LookPath("ffmpeg"); err == nil {
+    // Check basic installation
+    ffmpegPath, err := exec.LookPath("ffmpeg")
+    if err == nil {
         components.FFmpeg = true
+        log.Printf("FFmpeg found at: %s", ffmpegPath)
     }
 
-    if _, err := exec.LookPath("ffprobe"); err == nil {
+    ffprobePath, err := exec.LookPath("ffprobe")
+    if err == nil {
         components.FFprobe = true
+        log.Printf("FFprobe found at: %s", ffprobePath)
     }
 
-    cmd := exec.Command("ffmpeg", "-version")
+    // Check encoders
+    cmd := exec.Command("ffmpeg", "-encoders")
     output, err := cmd.Output()
-    if err != nil {
-        return nil, fmt.Errorf("failed to get FFmpeg version: %v", err)
-    }
-
-    outputStr := string(output)
-
-    for codec := range components.Codecs {
-        if strings.Contains(outputStr, codec) {
-            components.Codecs[codec] = true
+    if err == nil {
+        outputStr := string(output)
+        scanner := bufio.NewScanner(strings.NewReader(outputStr))
+        for scanner.Scan() {
+            line := scanner.Text()
+            if strings.Contains(line, "libx264") {
+                components.Codecs["libx264"] = true
+            }
+            if strings.Contains(line, " aac ") {
+                components.Codecs["aac"] = true
+            }
         }
     }
 
-    for format := range components.Formats {
-        if strings.Contains(outputStr, format) {
-            components.Formats[format] = true
+    // Check formats
+    cmd = exec.Command("ffmpeg", "-formats")
+    output, err = cmd.Output()
+    if err == nil {
+        outputStr := string(output)
+        scanner := bufio.NewScanner(strings.NewReader(outputStr))
+        for scanner.Scan() {
+            line := scanner.Text()
+            if strings.Contains(line, " hls ") {
+                components.Formats["hls"] = true
+            }
+            if strings.Contains(line, " dash ") {
+                components.Formats["dash"] = true
+            }
         }
     }
 
-    for lib := range components.Libraries {
-        if strings.Contains(outputStr, lib) {
-            components.Libraries[lib] = true
+    // Check configuration and libraries
+    cmd = exec.Command("ffmpeg", "-version")
+    output, err = cmd.Output()
+    if err == nil {
+        outputStr := string(output)
+        if strings.Contains(outputStr, "enable-libpng") || 
+           strings.Contains(outputStr, "--enable-libpng") ||
+           strings.Contains(outputStr, "png") {
+            components.Libraries["libpng"] = true
+        }
+    }
+
+    // Additional verification
+    if components.FFmpeg {
+        // Verify H.264 encoding capability
+        cmd = exec.Command("ffmpeg", "-hide_banner", "-h", "encoder=libx264")
+        if err := cmd.Run(); err == nil {
+            components.Codecs["libx264"] = true
+        }
+
+        // Verify AAC encoding capability
+        cmd = exec.Command("ffmpeg", "-hide_banner", "-h", "encoder=aac")
+        if err := cmd.Run(); err == nil {
+            components.Codecs["aac"] = true
         }
     }
 
@@ -90,6 +131,16 @@ func logFFmpegStatus(components *FFmpegComponents) {
     }
 }
 
+func validateEnvironment() error {
+    required := []string{"TASK_ID", "USER_ID", "ASSET_ID", "FOOTAGE_DIR"}
+    for _, env := range required {
+        if value := os.Getenv(env); value == "" {
+            return fmt.Errorf("required environment variable %s is not set", env)
+        }
+    }
+    return nil
+}
+
 func main() {
     components, err := checkFFmpegInstallation()
     if err != nil {
@@ -102,6 +153,10 @@ func main() {
         log.Fatal("Required FFmpeg components are missing")
     }
 
+    if err := validateEnvironment(); err != nil {
+        log.Fatalf("Environment validation failed: %v", err)
+    }
+
     taskId := os.Getenv("TASK_ID")
     userId := os.Getenv("USER_ID")
     assetId := os.Getenv("ASSET_ID")
@@ -112,7 +167,11 @@ func main() {
         log.Fatalf("Failed to create working directory: %v", err)
     }
 
-    defer os.RemoveAll(workDir)
+    defer func() {
+        if err := os.RemoveAll(workDir); err != nil {
+            log.Printf("Failed to cleanup working directory: %v", err)
+        }
+    }()
 
     log.Printf("Processor started")
     log.Printf("Task ID: %s", taskId)
