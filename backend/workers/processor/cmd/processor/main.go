@@ -8,6 +8,7 @@ import (
     "path/filepath"
     "strings"
     "bufio"
+    "bytes"
 )
 
 type FFmpegComponents struct {
@@ -16,6 +17,16 @@ type FFmpegComponents struct {
     Codecs     map[string]bool
     Formats    map[string]bool
     Libraries  map[string]bool
+    Details    map[string]string
+}
+
+func runCommand(name string, args ...string) (string, error) {
+    cmd := exec.Command(name, args...)
+    var out bytes.Buffer
+    cmd.Stdout = &out
+    cmd.Stderr = &out
+    err := cmd.Run()
+    return out.String(), err
 }
 
 func checkFFmpegInstallation() (*FFmpegComponents, error) {
@@ -31,112 +42,100 @@ func checkFFmpegInstallation() (*FFmpegComponents, error) {
         Libraries: map[string]bool{
             "libpng": false,
         },
+        Details: map[string]string{},
     }
 
-    // Check basic installation
-    ffmpegPath, err := exec.LookPath("ffmpeg")
-    if err == nil {
+    if ffmpegPath, err := exec.LookPath("ffmpeg"); err == nil {
         components.FFmpeg = true
-        log.Printf("FFmpeg found at: %s", ffmpegPath)
+        components.Details["ffmpeg_path"] = ffmpegPath
+
+        if version, err := runCommand("ffmpeg", "-version"); err == nil {
+            components.Details["ffmpeg_version"] = version
+        }
+
+        if encoders, err := runCommand("ffmpeg", "-hide_banner", "-encoders"); err == nil {
+            components.Details["encoders"] = encoders
+            scanner := bufio.NewScanner(strings.NewReader(encoders))
+            for scanner.Scan() {
+                line := scanner.Text()
+                if strings.Contains(line, "libx264") {
+                    components.Codecs["libx264"] = true
+                }
+                if strings.Contains(line, " aac ") {
+                    components.Codecs["aac"] = true
+                }
+                if strings.Contains(line, "png") {
+                    components.Libraries["libpng"] = true
+                }
+            }
+        }
+
+        if formats, err := runCommand("ffmpeg", "-hide_banner", "-formats"); err == nil {
+            components.Details["formats"] = formats
+            scanner := bufio.NewScanner(strings.NewReader(formats))
+            for scanner.Scan() {
+                line := scanner.Text()
+                if strings.Contains(line, " hls ") {
+                    components.Formats["hls"] = true
+                }
+                if strings.Contains(line, " dash ") {
+                    components.Formats["dash"] = true
+                }
+            }
+        }
     }
 
-    ffprobePath, err := exec.LookPath("ffprobe")
-    if err == nil {
+    if ffprobePath, err := exec.LookPath("ffprobe"); err == nil {
         components.FFprobe = true
-        log.Printf("FFprobe found at: %s", ffprobePath)
-    }
-
-    // Check encoders
-    cmd := exec.Command("ffmpeg", "-encoders")
-    output, err := cmd.Output()
-    if err == nil {
-        outputStr := string(output)
-        scanner := bufio.NewScanner(strings.NewReader(outputStr))
-        for scanner.Scan() {
-            line := scanner.Text()
-            if strings.Contains(line, "libx264") {
-                components.Codecs["libx264"] = true
-            }
-            if strings.Contains(line, " aac ") {
-                components.Codecs["aac"] = true
-            }
-        }
-    }
-
-    // Check formats
-    cmd = exec.Command("ffmpeg", "-formats")
-    output, err = cmd.Output()
-    if err == nil {
-        outputStr := string(output)
-        scanner := bufio.NewScanner(strings.NewReader(outputStr))
-        for scanner.Scan() {
-            line := scanner.Text()
-            if strings.Contains(line, " hls ") {
-                components.Formats["hls"] = true
-            }
-            if strings.Contains(line, " dash ") {
-                components.Formats["dash"] = true
-            }
-        }
-    }
-
-    // Check configuration and libraries
-    cmd = exec.Command("ffmpeg", "-version")
-    output, err = cmd.Output()
-    if err == nil {
-        outputStr := string(output)
-        if strings.Contains(outputStr, "enable-libpng") || 
-           strings.Contains(outputStr, "--enable-libpng") ||
-           strings.Contains(outputStr, "png") {
-            components.Libraries["libpng"] = true
-        }
-    }
-
-    // Additional verification
-    if components.FFmpeg {
-        // Verify H.264 encoding capability
-        cmd = exec.Command("ffmpeg", "-hide_banner", "-h", "encoder=libx264")
-        if err := cmd.Run(); err == nil {
-            components.Codecs["libx264"] = true
-        }
-
-        // Verify AAC encoding capability
-        cmd = exec.Command("ffmpeg", "-hide_banner", "-h", "encoder=aac")
-        if err := cmd.Run(); err == nil {
-            components.Codecs["aac"] = true
+        components.Details["ffprobe_path"] = ffprobePath
+        
+        if version, err := runCommand("ffprobe", "-version"); err == nil {
+            components.Details["ffprobe_version"] = version
         }
     }
 
     return components, nil
 }
 
-func logFFmpegStatus(components *FFmpegComponents) {
-    log.Println("FFmpeg Components Status:")
-    log.Printf("FFmpeg installed: %v", components.FFmpeg)
-    log.Printf("FFprobe installed: %v", components.FFprobe)
-    
-    log.Println("\nCodecs:")
+func generateStatusReport(components *FFmpegComponents) string {
+    var report strings.Builder
+
+    report.WriteString("\n=== FFmpeg Installation Report ===\n")
+    report.WriteString(fmt.Sprintf("FFmpeg: %v (Path: %s)\n", components.FFmpeg, components.Details["ffmpeg_path"]))
+    report.WriteString(fmt.Sprintf("FFprobe: %v (Path: %s)\n", components.FFprobe, components.Details["ffprobe_path"]))
+
+    report.WriteString("\nCodecs:\n")
     for codec, installed := range components.Codecs {
-        log.Printf("- %s: %v", codec, installed)
+        report.WriteString(fmt.Sprintf("- %s: %v\n", codec, installed))
     }
-    
-    log.Println("\nFormats:")
+
+    report.WriteString("\nFormats:\n")
     for format, installed := range components.Formats {
-        log.Printf("- %s: %v", format, installed)
+        report.WriteString(fmt.Sprintf("- %s: %v\n", format, installed))
     }
-    
-    log.Println("\nLibraries:")
+
+    report.WriteString("\nLibraries:\n")
     for lib, installed := range components.Libraries {
-        log.Printf("- %s: %v", lib, installed)
+        report.WriteString(fmt.Sprintf("- %s: %v\n", lib, installed))
     }
+
+    report.WriteString("\nDetailed Capabilities:\n")
+    report.WriteString("FFmpeg Version Info:\n")
+    report.WriteString(components.Details["ffmpeg_version"])
+
+    return report.String()
 }
 
 func validateEnvironment() error {
     required := []string{"TASK_ID", "USER_ID", "ASSET_ID", "FOOTAGE_DIR"}
+    missing := []string{}
     for _, env := range required {
         if value := os.Getenv(env); value == "" {
-            return fmt.Errorf("required environment variable %s is not set", env)
+            missing = append(missing, env)
         }
+    }
+    if len(missing) > 0 {
+        return fmt.Errorf("missing required environment variables: %v", missing)
     }
     return nil
 }
@@ -147,7 +146,8 @@ func main() {
         log.Fatalf("Failed to check FFmpeg installation: %v", err)
     }
 
-    logFFmpegStatus(components)
+    report := generateStatusReport(components)
+    log.Println(report)
 
     if !components.FFmpeg || !components.FFprobe {
         log.Fatal("Required FFmpeg components are missing")
@@ -167,20 +167,12 @@ func main() {
         log.Fatalf("Failed to create working directory: %v", err)
     }
 
+    log.Printf("\n=== Process Configuration ===\nTask ID: %s\nUser ID: %s\nAsset ID: %s\nWorking Directory: %s\n",
+        taskId, userId, assetId, workDir)
+
     defer func() {
         if err := os.RemoveAll(workDir); err != nil {
             log.Printf("Failed to cleanup working directory: %v", err)
         }
     }()
-
-    log.Printf("Processor started")
-    log.Printf("Task ID: %s", taskId)
-    log.Printf("User ID: %s", userId)
-    log.Printf("Asset ID: %s", assetId)
-    log.Printf("Working Directory: %s", workDir)
-
-    testFile := filepath.Join(workDir, "test.txt")
-    if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
-        log.Printf("Failed to write test file: %v", err)
-    }
 }
