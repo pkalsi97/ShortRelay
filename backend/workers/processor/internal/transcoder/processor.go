@@ -10,11 +10,8 @@ import (
 )
  
 func NewProcessor(inputPath string, resolutions []Resolution) (*Processor, error) {
-    dir := filepath.Dir(inputPath)
-    filename := filepath.Base(inputPath)
-    nameWithoutExt := strings.TrimSuffix(filename, filepath.Ext(filename))
-    
-    outputDir := filepath.Join(dir, nameWithoutExt+"_transcoded")
+    dir := filepath.Dir(inputPath)    
+    outputDir := filepath.Join(dir, "transcoded")
     paths := &OutputPaths{
         BaseDir:    outputDir,
         MP4Dir:     filepath.Join(outputDir, "mp4"),
