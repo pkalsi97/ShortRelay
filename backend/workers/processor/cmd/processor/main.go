@@ -5,7 +5,9 @@ import (
     "log"
     "os"
     "path/filepath"
-    "runtime"
+    "io"
+    "time"
+    "archive/zip"
 
     "github.com/pkalsi97/ShortRelay/backend/workers/processor/internal/storage/s3"
     "github.com/pkalsi97/ShortRelay/backend/workers/processor/internal/validation"
@@ -55,33 +57,87 @@ func loadConfig() (*Config, error) {
     return config, nil
 }
 
+func createZip(sourceDir, zipFile string) error {
+    zipfile, err := os.Create(zipFile)
+    if err != nil {
+        return err
+    }
+    defer zipfile.Close()
+
+    archive := zip.NewWriter(zipfile)
+    defer archive.Close()
+
+    return filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+        if err != nil {
+            return err
+        }
+
+        if info.IsDir() {
+            return nil
+        }
+
+        header, err := zip.FileInfoHeader(info)
+        if err != nil {
+            return err
+        }
+
+        relPath, err := filepath.Rel(sourceDir, path)
+        if err != nil {
+            return err
+        }
+        header.Name = relPath
+
+        writer, err := archive.CreateHeader(header)
+        if err != nil {
+            return err
+        }
+
+        file, err := os.Open(path)
+        if err != nil {
+            return err
+        }
+        defer file.Close()
+
+        _, err = io.Copy(writer, file)
+        return err
+    })
+}
+
+func logStepTime(name string, step *models.StepInfo) {
+    log.Printf(" -> %s took: %.3fs", name, step.ExecutionTime.Seconds())
+}
+
 func main() {
     steps := &models.ProcessingSteps{}
 
     steps.OverView = models.NewMasterInfo();
     defer func() {
         steps.OverView.MasterComplete()
-        log.Printf("Basic Validation Result: %+v",steps)
+        //log.Printf("Basic Validation Result: %+v",steps)
     }()
     
     // Step 1: Initialize -> get env Variables
     steps.Initialization = models.NewStepInfo()
     config, err := loadConfig()
     steps.Initialization.Complete(err)
-    workDir := filepath.Join(config.FootageDir, config.UserID, config.AssetID)
-    steps.Initialization.Complete(err)
+    logStepTime("Initialization", steps.Initialization)
+
 
     // Step 2: Download Footage from s3
     steps.Download = models.NewStepInfo()
     s3TransportClient, err := s3.NewS3Client(config.AWSRegion, config.TransportBucket)
     downloadedData, err := s3TransportClient.DownloadFile(config.InputKey)
     steps.Download.Complete(err)
+    logStepTime("Download", steps.Download)
 
     // Step 3: Write footage to tmp
     steps.WriteToTemp = models.NewStepInfo()
+    workDir := filepath.Join(config.FootageDir, config.UserID, config.AssetID)
     tempFile := filepath.Join(workDir, "input")
     err = os.WriteFile(tempFile, downloadedData, 0644);
+    time.Sleep(1000 * time.Millisecond)
     steps.WriteToTemp.Complete(err)
+    logStepTime("WriteToTemp", steps.WriteToTemp)
 
 
     // VALIDATION 
@@ -91,13 +147,15 @@ func main() {
     steps.BasicValidation = models.NewStepInfo()
     basicResult, err := validator.ValidateBasic(tempFile)
     steps.BasicValidation.Complete(err)
+    logStepTime("Basic Validation", steps.BasicValidation)
     log.Printf("Basic Validation Result: %+v",basicResult)
 
     // Step 5: Stream Validation of footage
     steps.StreamValidation = models.NewStepInfo()
     streamResult, err := validator.ValidateStream(tempFile)
     steps.StreamValidation.Complete(err)
-    log.Printf("Basic Validation Result: %+v",streamResult)
+    logStepTime("Stream Validation", steps.StreamValidation)
+    log.Printf("Stream Validation Result: %+v",streamResult)
 
 
     // Step 6: Metadata Extraction from footage
@@ -105,7 +163,8 @@ func main() {
     extractor := validation.NewMetadataExtractor()
     metadata, err := extractor.GetContentMetadata(tempFile)
     steps.MetadataExtraction.Complete(err)
-    log.Printf("Basic Validation Result: %+v",metadata)
+    logStepTime("Metadata Extraction", steps.MetadataExtraction)
+    log.Printf("Result: %+v",metadata)
 
     // TRANSCODING
     resolutions := []transcoder.Resolution{
@@ -119,52 +178,54 @@ func main() {
     steps.InitializeProcessor = models.NewStepInfo()
     processor, err := transcoder.NewProcessor(tempFile, resolutions)
     steps.InitializeProcessor.Complete(err)
+    logStepTime("Initialize Processor", steps.InitializeProcessor)
 
     // Step 8: Create Thumbnail
     steps.Thumbnail = models.NewStepInfo()
     err = processor.GenerateThumbnail();
     steps.Thumbnail.Complete(err)
+    logStepTime("Thumbnail", steps.Thumbnail)
 
 
     // Step 9: GenerateMP4Files
     steps.MP4Generation = models.NewStepInfo()
     err = processor.GenerateMP4Files(); 
     steps.MP4Generation.Complete(err)
+    logStepTime("GenerateMP4Files", steps.MP4Generation)
 
 
     // Step 10: GenerateHLSPlaylists
     steps.HLSGeneration = models.NewStepInfo()
     err = processor.GenerateHLSPlaylists(); 
     steps.HLSGeneration.Complete(err)
+    logStepTime("HLSGeneration", steps.HLSGeneration)
     
 
     // Step 11: IframePlaylist
     steps.IframePlaylist = models.NewStepInfo()
-  
     err = processor.GenerateIframePlaylists(); 
     steps.IframePlaylist.Complete(err)
-
+    logStepTime("IframePlaylist", steps.IframePlaylist)
 
     // Step 12: Upload
     steps.Upload = models.NewStepInfo()
     s3ContentClient, err := s3.NewS3Client(config.AWSRegion, config.ContentBucket)
-    uploadConfig := &s3.UploadManagerConfig{
-        MaxWorkers: runtime.NumCPU(),
-        BufferSize: 1000,
-    }
-
-    uploadManager := s3.NewUploadManager(
-        s3ContentClient,
-        config.UserID,
-        config.AssetID,
-        config.ContentBucket,
-        uploadConfig,
-    )
 
     transcodedDir := filepath.Join(workDir, "transcoded")
-    err = uploadManager.UploadAllParallel(transcodedDir)
+    zipFile := filepath.Join(workDir, fmt.Sprintf("%s.zip", config.AssetID))
+
+    err = createZip(transcodedDir, zipFile)
+    data, err := os.ReadFile(zipFile)
+
+
+    err = s3ContentClient.UploadFile(
+        filepath.Join(config.UserID, config.AssetID, "package.zip"),
+        data,
+        "application/zip",
+    )
     steps.Upload.Complete(err)
-    
+    logStepTime("Upload", steps.Upload)
+
     defer func() {
         if err := os.RemoveAll(workDir); err != nil {
             log.Printf("Failed to cleanup working directory: %v", err)
