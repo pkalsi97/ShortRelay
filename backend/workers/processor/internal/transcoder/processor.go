@@ -8,11 +8,6 @@ import (
     "path/filepath"
     "strings"
 )
-type Processor struct {
-    Paths       *OutputPaths
-    Resolutions []Resolution
-    VideoInfo   *VideoInfo
-}
  
 func NewProcessor(inputPath string, resolutions []Resolution) (*Processor, error) {
     dir := filepath.Dir(inputPath)
@@ -38,18 +33,19 @@ func NewProcessor(inputPath string, resolutions []Resolution) (*Processor, error
     }
 
     return &Processor{
+        InputPath:   inputPath,
         Paths:       paths,
         Resolutions: resolutions,
         VideoInfo:   videoInfo,
     }, nil
 }
 
-func (p *Processor) GenerateThumbnail(inputPath string) error {    
+func (p *Processor) GenerateThumbnail() error {    
     args := []string{
         "-v", "error",
         "-y",
         "-ss", fmt.Sprintf("%.2f", p.VideoInfo.Duration/2),
-        "-i", inputPath,
+        "-i", p.InputPath,
         "-frames:v", "1",
         "-f", "image2",
         "-vf", "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease",
@@ -68,15 +64,15 @@ func (p *Processor) GenerateThumbnail(inputPath string) error {
     return nil
 }
 
-func (p *Processor) GenerateMP4Files(inputPath string) error {
+func (p *Processor) GenerateMP4Files() error {
     if p.VideoInfo.HasAudio {
-        if err := p.extractAudio(inputPath); err != nil {
+        if err := p.extractAudio(p.InputPath); err != nil {
             return err
         }
     }
 
     for _, res := range p.Resolutions {
-        if err := p.generateMP4(inputPath, res); err != nil {
+        if err := p.generateMP4(p.InputPath, res); err != nil {
             return err
         }
     }
@@ -343,11 +339,11 @@ func Process(inputPath string, resolutions []Resolution) error {
         return err
     }
     log.Printf("GenerateThumbnail")
-    if err := processor.GenerateThumbnail(inputPath); err != nil {
+    if err := processor.GenerateThumbnail(); err != nil {
         return err
     }
     log.Printf("GenerateMP4Files")
-    if err := processor.GenerateMP4Files(inputPath); err != nil {
+    if err := processor.GenerateMP4Files(); err != nil {
         return err
     }
     log.Printf("GenerateHLSPlaylists")

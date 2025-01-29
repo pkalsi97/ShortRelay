@@ -25,7 +25,7 @@ interface UploadResponse {
 type UploadStatus = 'idle' | 'validating' | 'requesting' | 'uploading' | 'complete' | 'error';
 
 const ACCEPTED_FORMATS = ['video/mp4', 'video/quicktime', 'video/webm'];
-const MAX_FILE_SIZE_MB = 100;
+const MAX_FILE_SIZE_MB = 120;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const STATUS_MESSAGES = {

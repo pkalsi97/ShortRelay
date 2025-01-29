@@ -22,3 +22,10 @@ type VideoInfo struct {
     HasAudio   bool
     IsVertical bool
 }
+
+type Processor struct {
+    InputPath   string
+    Paths       *OutputPaths
+    Resolutions []Resolution
+    VideoInfo   *VideoInfo
+}
