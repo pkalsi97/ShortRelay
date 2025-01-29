@@ -133,6 +133,10 @@ func main() {
     // Step 3: Write footage to tmp
     steps.WriteToTemp = models.NewStepInfo()
     workDir := filepath.Join(config.FootageDir, config.UserID, config.AssetID)
+    if err := os.MkdirAll(workDir, 0755); err != nil {
+        log.Fatalf("Failed to create working directory")
+    }
+    
     tempFile := filepath.Join(workDir, "input")
     err = os.WriteFile(tempFile, downloadedData, 0644);
     time.Sleep(1000 * time.Millisecond)
