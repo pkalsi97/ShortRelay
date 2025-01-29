@@ -43,11 +43,13 @@ func (s *S3Client) DownloadFile(key string) ([]byte, error) {
     return io.ReadAll(output.Body)
 }
 
-func (s *S3Client) UploadFile(key string, data []byte) error {
+
+func (s *S3Client) UploadFile(key string, data []byte, contentType string) error {
     _, err := s.client.PutObject(context.TODO(), &s3.PutObjectInput{
-        Bucket: &s.bucketName,
-        Key:    &key,
-        Body:   bytes.NewReader(data),
+        Bucket:      &s.bucketName,
+        Key:         &key,
+        Body:        bytes.NewReader(data),
+        ContentType: &contentType,
     })
     return err
 }
