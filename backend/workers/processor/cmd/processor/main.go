@@ -5,6 +5,7 @@ import (
     "log"
     "os"
     "path/filepath"
+    "runtime"
 
     "github.com/pkalsi97/ShortRelay/backend/workers/processor/internal/storage/s3"
     "github.com/pkalsi97/ShortRelay/backend/workers/processor/internal/validation"
@@ -64,85 +65,48 @@ func main() {
     }()
     
     // Step 1: Initialize -> get env Variables
-
     steps.Initialization = models.NewStepInfo()
-
     config, err := loadConfig()
-    if err != nil {
-        steps.Initialization.Complete(nil, err)
-        steps.OverView.MarkCriticalFailure()
-    }
-
-    workDir := filepath.Join(config.FootageDir, config.TaskID)
-    if err := os.MkdirAll(workDir, 0755); err != nil {
-        steps.Initialization.Complete(nil, err)
-        steps.OverView.MarkCriticalFailure()
-    } else {
-        steps.Initialization.Complete(config, nil)
-    }
+    steps.Initialization.Complete(err)
+    workDir := filepath.Join(config.FootageDir, config.UserID, config.AssetID)
+    steps.Initialization.Complete(err)
 
     // Step 2: Download Footage from s3
     steps.Download = models.NewStepInfo()
-
     s3TransportClient, err := s3.NewS3Client(config.AWSRegion, config.TransportBucket)
-    if err != nil {
-        steps.Download.Complete(nil, err)
-        steps.OverView.MarkCriticalFailure()
-    }
-
     downloadedData, err := s3TransportClient.DownloadFile(config.InputKey)
-    if err != nil {
-        steps.Download.Complete(nil, err)
-        steps.OverView.MarkCriticalFailure()
-    } else {
-        steps.Download.Complete(downloadedData, nil)
-    } 
+    steps.Download.Complete(err)
 
     // Step 3: Write footage to tmp
     steps.WriteToTemp = models.NewStepInfo()
-    
-    tempFile := filepath.Join(workDir, "input.mp4")
-    if err := os.WriteFile(tempFile, downloadedData, 0644); err != nil {
-        steps.WriteToTemp.Complete(nil,err)
-        steps.OverView.MarkCriticalFailure()
-    } else {
-        steps.WriteToTemp.Complete("success", err)
-    }
+    tempFile := filepath.Join(workDir, "input")
+    err = os.WriteFile(tempFile, downloadedData, 0644);
+    steps.WriteToTemp.Complete(err)
+
 
     // VALIDATION 
     validator := validation.NewValidator()
 
     // Step 4: Basic Validation of footage
     steps.BasicValidation = models.NewStepInfo()
-
     basicResult, err := validator.ValidateBasic(tempFile)
-    if err != nil {
-        steps.BasicValidation.Complete(nil,err)
-    } else {
-        steps.BasicValidation.Complete(basicResult, nil)
-    }
+    steps.BasicValidation.Complete(err)
+    log.Printf("Basic Validation Result: %+v",basicResult)
 
     // Step 5: Stream Validation of footage
     steps.StreamValidation = models.NewStepInfo()
-
     streamResult, err := validator.ValidateStream(tempFile)
-    if err != nil {
-        steps.StreamValidation.Complete(nil,err)
-    } else {
-        steps.StreamValidation.Complete(streamResult, nil)
-    }
+    steps.StreamValidation.Complete(err)
+    log.Printf("Basic Validation Result: %+v",streamResult)
+
 
     // Step 6: Metadata Extraction from footage
     steps.MetadataExtraction = models.NewStepInfo()
-
     extractor := validation.NewMetadataExtractor()
     metadata, err := extractor.GetContentMetadata(tempFile)
-    if err != nil {
-        steps.MetadataExtraction.Complete(nil,err)
-    } else {
-        steps.MetadataExtraction.Complete(metadata, nil)
-    }
-    
+    steps.MetadataExtraction.Complete(err)
+    log.Printf("Basic Validation Result: %+v",metadata)
+
     // TRANSCODING
     resolutions := []transcoder.Resolution{
         { Name:    "1080p", Width:   1920, Height:  1080, Bitrate: "3000k",},
@@ -153,50 +117,54 @@ func main() {
     
     // Step 7: Initialize Processor
     steps.InitializeProcessor = models.NewStepInfo()
-
     processor, err := transcoder.NewProcessor(tempFile, resolutions)
-    if err != nil {
-        steps.InitializeProcessor.Complete(nil, err)
-    } else {
-        steps.InitializeProcessor.Complete("success", nil)
-    }
+    steps.InitializeProcessor.Complete(err)
 
     // Step 8: Create Thumbnail
     steps.Thumbnail = models.NewStepInfo()
+    err = processor.GenerateThumbnail();
+    steps.Thumbnail.Complete(err)
 
-    if err := processor.GenerateThumbnail(); err != nil {
-        steps.Thumbnail.Complete(nil, err)
-    } else {
-        steps.Thumbnail.Complete("success", nil)
-    }
 
     // Step 9: GenerateMP4Files
     steps.MP4Generation = models.NewStepInfo()
+    err = processor.GenerateMP4Files(); 
+    steps.MP4Generation.Complete(err)
 
-    if err := processor.GenerateMP4Files(); err != nil {
-        steps.MP4Generation.Complete(nil, err)
-    } else {
-        steps.MP4Generation.Complete("success", nil)
-    }
 
     // Step 10: GenerateHLSPlaylists
     steps.HLSGeneration = models.NewStepInfo()
-
-    if err := processor.GenerateHLSPlaylists(); err != nil {
-        steps.HLSGeneration.Complete(nil, err)
-    } else {
-        steps.HLSGeneration.Complete("success", nil)
-    }
+    err = processor.GenerateHLSPlaylists(); 
+    steps.HLSGeneration.Complete(err)
+    
 
     // Step 11: IframePlaylist
     steps.IframePlaylist = models.NewStepInfo()
   
-    if err := processor.GenerateIframePlaylists(); err != nil {
-        steps.IframePlaylist.Complete(nil, err)
-    } else {
-        steps.IframePlaylist.Complete("success", nil)
+    err = processor.GenerateIframePlaylists(); 
+    steps.IframePlaylist.Complete(err)
+
+
+    // Step 12: Upload
+    steps.Upload = models.NewStepInfo()
+    s3ContentClient, err := s3.NewS3Client(config.AWSRegion, config.ContentBucket)
+    uploadConfig := &s3.UploadManagerConfig{
+        MaxWorkers: runtime.NumCPU(),
+        BufferSize: 1000,
     }
 
+    uploadManager := s3.NewUploadManager(
+        s3ContentClient,
+        config.UserID,
+        config.AssetID,
+        config.ContentBucket,
+        uploadConfig,
+    )
+
+    transcodedDir := filepath.Join(workDir, "transcoded")
+    err = uploadManager.UploadAllParallel(transcodedDir)
+    steps.Upload.Complete(err)
+    
     defer func() {
         if err := os.RemoveAll(workDir); err != nil {
             log.Printf("Failed to cleanup working directory: %v", err)
