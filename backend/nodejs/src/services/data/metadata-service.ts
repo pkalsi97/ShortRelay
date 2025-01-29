@@ -5,9 +5,20 @@ import { DbConfig } from '../../types/db.types';
 
 export enum ProcessingStage {
     UPLOAD = 'upload',
-    VALIDATION = 'validation',
-    METADATA = 'metadata',
-    TRANSCODING = 'transcoding',
+    BASIC_VALIDATION = 'basicValidation',
+    STREAM_VALIDATION = 'streamValidation',
+    ACCEPTED = 'accepted',
+    TECHNICAL_METADATA = 'technicalMetadata',
+    QUALITY_METADATA = 'qualityMetadata',
+    TRANSCODING_TASK = 'transcodingTask',
+    WRITE_TO_TEMP = 'writeToTemp',
+    INITIALIZE_PROCESSOR = 'initializeProcessor',
+    DOWNLOAD = 'download',
+    THUMBNAIL = 'generateThumbnail',
+    MP4_FILES = 'MP4Files',
+    HLS = 'generateHLSPlaylists',
+    IFRAME = 'generateIframePlaylists',
+    UPLOAD_T = 'uploadTranscodedFootage',
     COMPLETION = 'completion',
     DISTRIBUTION = 'distribution'
 }
