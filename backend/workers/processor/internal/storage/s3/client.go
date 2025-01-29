@@ -4,13 +4,12 @@ import (
     "context"
     "fmt"
     "bytes"
-    "log"
     "runtime"
-    "time"
-    
+
     "github.com/aws/aws-sdk-go-v2/config"
     "github.com/aws/aws-sdk-go-v2/service/s3"
     "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+    "github.com/aws/smithy-go/logging"
 )
 
 type S3Client struct {
@@ -20,9 +19,17 @@ type S3Client struct {
     bucketName string
 }
 
+type quietLogger struct{}
+
+
+func (l quietLogger) Logf(classification logging.Classification, format string, v ...interface{}) {
+}
+
 func NewS3Client(region string, bucketName string) (*S3Client, error) {
+
     cfg, err := config.LoadDefaultConfig(context.TODO(),
         config.WithRegion(region),
+        config.WithLogger(quietLogger{}),
     )
     if err != nil {
         return nil, fmt.Errorf("unable to load SDK config: %v", err)
@@ -56,25 +63,12 @@ func NewS3Client(region string, bucketName string) (*S3Client, error) {
 }
 
 func (s *S3Client) UploadFile(key string, data []byte, contentType string) error {
-    startTime := time.Now()
-    size := len(data)
-
     _, err := s.uploader.Upload(context.TODO(), &s3.PutObjectInput{
         Bucket:      &s.bucketName,
         Key:         &key,
         Body:        bytes.NewReader(data),
         ContentType: &contentType,
     })
-
-    duration := time.Since(startTime)
-    speed := float64(size) / 1024 / 1024 / duration.Seconds()
-
-    log.Printf("Uploaded %s - Size: %.2f MB, Time: %.2fs, Speed: %.2f MB/s",
-        key,
-        float64(size)/1024/1024,
-        duration.Seconds(),
-        speed)
-
     return err
 }
 
@@ -82,24 +76,13 @@ func (s *S3Client) UploadFile(key string, data []byte, contentType string) error
 func (s *S3Client) DownloadFile(key string) ([]byte, error) {
     buffer := manager.NewWriteAtBuffer([]byte{})
 
-    startTime := time.Now()
-
-    numBytes, err := s.downloader.Download(context.TODO(), buffer, &s3.GetObjectInput{
+    _, err := s.downloader.Download(context.TODO(), buffer, &s3.GetObjectInput{
         Bucket: &s.bucketName,
         Key:    &key,
     })
     if err != nil {
         return nil, fmt.Errorf("failed to download file: %v", err)
     }
-
-    duration := time.Since(startTime)
-    speed := float64(numBytes) / 1024 / 1024 / duration.Seconds()
-
-    log.Printf("Downloaded %s - Size: %.2f MB, Time: %.2fs, Speed: %.2f MB/s",
-        key,
-        float64(numBytes)/1024/1024,
-        duration.Seconds(),
-        speed)
 
     return buffer.Bytes(), nil
 }
