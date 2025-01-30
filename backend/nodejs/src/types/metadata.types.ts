@@ -6,7 +6,6 @@ export interface SourceMetadata {
     metadata:{
         technical:TechnicalMetadata,
         quality:QualityMetrics,
-        content:ContentMetadata,
     }
 }
 
@@ -23,11 +22,6 @@ export interface TechnicalMetadata {
     };
     aspectRatio: string | 'N/A';
     colorSpace: string | 'N/A';
-}
-
-export interface ContentMetadata {
-    creationDate: string | 'N/A';
-    lastModified: string | 'N/A';
 }
 
 export interface QualityMetrics {
@@ -72,5 +66,4 @@ export interface ContentValidationResult{
 export interface ContentMetadataResult {
     technical:TechnicalMetadata,
     quality: QualityMetrics,
-    content: ContentMetadata,
 }
