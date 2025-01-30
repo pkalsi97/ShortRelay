@@ -349,6 +349,8 @@ Resources:
               Resource:
                 - !Sub arn:${AWS::Partition}:s3:::${TransportStorage}
                 - !Sub arn:${AWS::Partition}:s3:::${TransportStorage}/*
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataStorage
       Events:
         UserActionsAPIsPOSTv1useruploadrequest:
           Type: Api
@@ -360,6 +362,8 @@ Resources:
         Variables:
           TRANSPORTSTORAGE_BUCKET_NAME: !Ref TransportStorage
           TRANSPORTSTORAGE_BUCKET_ARN: !GetAtt TransportStorage.Arn
+          METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
+          METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
   EventHandler:
     Type: AWS::Serverless::Function
     Properties:

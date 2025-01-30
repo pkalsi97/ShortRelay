@@ -1,7 +1,8 @@
-import { PutItemCommand, DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+import { GetItemCommand, PutItemCommand, DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 
-import { AssetRecord, createInitialRecord } from '../../types/asset-record.types';
+import { AssetRecord, StageProgressUpdate, createInitialRecord } from '../../types/asset-record.types';
 import { DbConfig } from '../../types/db.types';
+import { KeyOwner } from '../../utils/key-service';
 
 export enum MetadataPath {
     BASIC = 'validation.basic',
@@ -10,23 +11,27 @@ export enum MetadataPath {
     QUALITY = 'metadata.quality',
 }
 
+export enum Progress {
+    PENDING = 'PENDING',
+    COMPLETED = 'COMPLETED',
+    FAILED = 'FAILED'
+}
+
 export enum ProcessingStage {
-    UPLOAD = 'upload',
-    VALIDATION = 'validation',
-    ACCEPTED = 'accepted',
-    REJECTED = 'rejected',
-    METADATA = 'metadata',
-    TRANSCODINGTASK = 'transcodingTask',
-    WRITETOTEMP = 'writeToTemp',
-    INITIALIZEPROCESSOR = 'initializeProcessor',
-    DOWNLOAD = 'download',
-    THUMBNAIL = 'generateThumbnail',
-    MP4FILES = 'MP4Files',
-    HLS = 'generateHLSPlaylists',
-    IFRAME = 'generateIframePlaylists',
-    UPLOADT = 'uploadTranscodedFootage',
-    COMPLETION = 'completion',
-    DISTRIBUTION = 'distribution'
+    Upload = 'upload',
+    Validation = 'validation',
+    Metadata = 'metadata',
+    Accepted = 'accepted',
+    Download = 'download',
+    WriteToStorage = 'writeToStorage',
+    InitializeProcessor = 'initializeProcessor',
+    GenerateThumbnail = 'generateThumbnail',
+    GenerateMP4Files = 'generateMP4Files',
+    GenerateHLSPlaylists = 'generateHLSPlaylists',
+    UploadTranscodedFootage = 'uploadTranscodedFootage',
+    PostProcessingValidation = 'postProcessingValidation',
+    Completion = 'completion',
+    Distribution = 'distribution'
 }
 
 let dbConfig:DbConfig;
@@ -37,7 +42,9 @@ const initialize = (config:DbConfig): void => {
     dbClient = new DynamoDBClient({ region: config.region });
 };
 
-const initializeRecord = async (userId:string, assetId:string): Promise<boolean> => {
+const initializeRecord = async (owner: KeyOwner): Promise<boolean> => {
+    const userId = owner.userId;
+    const assetId = owner.assetId;
     const item: AssetRecord = createInitialRecord(userId, assetId);
 
     const command = new PutItemCommand({
@@ -51,24 +58,41 @@ const initializeRecord = async (userId:string, assetId:string): Promise<boolean>
 };
 
 const updateProgress = async (
-    userId: string,
-    assetId: string,
-    stage: ProcessingStage,
-    value: boolean,
+    owner: KeyOwner,
+    currentStage: string,
+    nextStage: string,
+    progressData: StageProgressUpdate,
 ): Promise<boolean> => {
+    const userId = owner.userId;
+    const assetId = owner.assetId;
     const command = new UpdateItemCommand({
         TableName: dbConfig.table,
         Key: {
             userId: { S: userId },
             assetId: { S: assetId },
         },
-        UpdateExpression: 'SET progress.#stage = :value, progress.updatedAt = :time',
+        UpdateExpression: `
+            SET progress.#currentStage.#status = :status,
+                progress.#currentStage.#startTime = :startTime,
+                progress.#currentStage.#endTime = :endTime,
+                progress.#currentStage.#error = :error,
+                stage = :nextStage,
+                updatedAt = :updateTime
+        `,
         ExpressionAttributeNames: {
-            '#stage': stage,
+            '#currentStage': currentStage,
+            '#status': 'status',
+            '#startTime': 'startTime',
+            '#endTime': 'endTime',
+            '#error': 'error',
         },
         ExpressionAttributeValues: {
-            ':value': { BOOL: value },
-            ':time': { S: new Date().toISOString() },
+            ':status': { S: progressData.status },
+            ':startTime': { S: progressData.startTime },
+            ':endTime': { S: new Date().toISOString() },
+            ':error': { S: progressData.error },
+            ':nextStage': { S: nextStage },
+            ':updateTime': { S: new Date().toISOString() },
         },
     });
 
@@ -76,14 +100,16 @@ const updateProgress = async (
     return response.$metadata.httpStatusCode === 200;
 };
 
-const markCriticalFailure = async ( userId: string, assetId: string, value: boolean): Promise<boolean> => {
+const markCriticalFailure = async ( owner: KeyOwner, value: boolean): Promise<boolean> => {
+    const userId = owner.userId;
+    const assetId = owner.assetId;
     const command = new UpdateItemCommand({
         TableName: dbConfig.table,
         Key: {
             userId: { S: userId },
             assetId: { S: assetId },
         },
-        UpdateExpression: 'SET progress.hasCriticalFailure = :value, progress.updatedAt = :time',
+        UpdateExpression: 'SET hasCriticalFailure = :value, updatedAt = :time',
         ExpressionAttributeValues: {
             ':value': { BOOL: value },
             ':time': { S: new Date().toISOString() },
@@ -142,8 +168,10 @@ const createUpdateCommand = (path: MetadataPath, data: any): UpdateCommandParams
 };
 
 const updateMetadata = async (
-    userId: string, assetId: string, path: MetadataPath, data: any ): Promise<boolean> => {
+    owner: KeyOwner, path: MetadataPath, data: any ): Promise<boolean> => {
     const { UpdateExpression, ExpressionAttributeNames, ExpressionAttributeValues } = createUpdateCommand(path, data);
+    const userId = owner.userId;
+    const assetId = owner.assetId;
 
     const command = new UpdateItemCommand({
         TableName: dbConfig.table,
@@ -160,6 +188,23 @@ const updateMetadata = async (
     return response.$metadata.httpStatusCode === 200;
 };
 
+const getCreatedTime = async ( owner: KeyOwner ): Promise<string> => {
+    const userId = owner.userId;
+    const assetId = owner.assetId;
+
+    const command = new GetItemCommand({
+        TableName: dbConfig.table,
+        Key: {
+            userId: { S: userId },
+            assetId: { S: assetId },
+        },
+        ProjectionExpression: 'createdAt',
+    });
+
+    const response = await dbClient.send(command);
+    return response.Item?.createdAt?.S ?? new Date().toISOString();
+};
+
 /* eslint-enable @typescript-eslint/no-explicit-any */
 export const MetadataService = {
     initialize,
@@ -167,4 +212,5 @@ export const MetadataService = {
     updateProgress,
     markCriticalFailure,
     updateMetadata,
+    getCreatedTime,
 };

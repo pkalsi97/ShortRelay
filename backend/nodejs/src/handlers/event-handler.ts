@@ -2,7 +2,7 @@
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { SQSEvent, SQSBatchResponse, SQSBatchItemFailure, S3Event } from 'aws-lambda';
 
-import { ProcessingStage, MetadataService } from '../services/data/metadata-service';
+import { Progress, ProcessingStage, MetadataService } from '../services/data/metadata-service';
 import { DbConfig } from '../types/db.types';
 import { TaskType, WorkerType, Task } from '../types/task.type';
 import { CustomError, Fault, ErrorName, exceptionHandlerFunction } from '../utils/error-handling';
@@ -37,22 +37,11 @@ export const eventHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> =
                     s3Events.Records.map(async (s3Event) => {
                         const key:string = s3Event.s3.object.key;
                         const bucket:string = s3Event.s3.bucket.name;
-                        console.warn(`Triggered for ${key}`);
+                        const owner: KeyOwner = KeyService.getOwner(key);
+                        const userId: string = owner.userId;
+                        const assetId: string = owner.assetId;
+                        const createdAt = await MetadataService.getCreatedTime(owner);
                         try {
-                            const owner: KeyOwner = KeyService.getOwner(key);
-                            const userId: string = owner.userId;
-                            const assetId: string = owner.assetId;
-
-                            if (!await MetadataService.initializeRecord(userId, assetId)){
-                                throw new CustomError(
-                                    ErrorName.InternalError,
-                                    'Failed to initialize in Metadata Cache',
-                                    503,
-                                    Fault.SERVER,
-                                    true,
-                                );
-                            }
-                            await MetadataService.updateProgress(userId, assetId, ProcessingStage.UPLOAD, true);
 
                             const task:Task = TaskService.createTask(
                                 userId,
@@ -69,7 +58,6 @@ export const eventHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> =
                             });
 
                             const response = await sqs.send(command);
-                            console.warn(response);
                             if (response.$metadata.httpStatusCode!==200){
                                 throw new CustomError(
                                     ErrorName.InternalError,
@@ -80,14 +68,36 @@ export const eventHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> =
                                 );
                             }
 
+                            await MetadataService.updateProgress(
+                                owner,
+                                ProcessingStage.Upload,
+                                ProcessingStage.Validation,
+                                {
+                                    status: Progress.COMPLETED,
+                                    startTime: createdAt,
+                                    error: 'N.A',
+                                },
+                            );
+
                         } catch (error){
                             const errorResponse =exceptionHandlerFunction(error);
-                            if (errorResponse.name !== 'ConditionalCheckFailedException'){
-                                failedS3Events.push({
-                                    key,
-                                    bucket,
-                                });
-                            }
+                            await MetadataService.updateProgress(
+                                owner,
+                                ProcessingStage.Upload,
+                                ProcessingStage.Validation,
+                                {
+                                    status: Progress.FAILED,
+                                    startTime: createdAt,
+                                    error: errorResponse.message,
+                                },
+                            );
+                            await MetadataService.markCriticalFailure(owner, true);
+
+                            failedS3Events.push({
+                                key,
+                                bucket,
+                            });
+
                         }
                     }),
                 );

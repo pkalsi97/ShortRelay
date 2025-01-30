@@ -4,7 +4,7 @@ import ffmpeg from 'fluent-ffmpeg';
 
 import { MetadataExtractor } from '../services/content/content-metadata-service';
 import { ContentValidator } from '../services/content/content-validation-service';
-import { MetadataPath, ProcessingStage, MetadataService } from '../services/data/metadata-service';
+import { Progress, MetadataPath, ProcessingStage, MetadataService } from '../services/data/metadata-service';
 import { ObjectServiceConfig, ObjectService } from '../services/data/object-service';
 import { DbConfig } from '../types/db.types';
 import { TaskType, WorkerType, Task } from '../types/task.type';
@@ -37,59 +37,69 @@ const sqs = new SQSClient({
 
 export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> => {
     const timer = { start: Date.now(), stop: () => `${((Date.now() - timer.start) / 1000).toFixed(3)}s` };
-
     const batchItemFailures: SQSBatchItemFailure[] = [];
     await Promise.all(
         messages.Records.map(async (sqsRecord) => {
             try {
                 const task = JSON.parse(sqsRecord.body) as Task;
                 const key:string = task.inputKey;
-                console.warn(`Triggered  Validation for ${key}`);
 
                 const owner: KeyOwner = KeyService.getOwner(key);
                 const userId: string = owner.userId;
                 const assetId: string = owner.assetId;
 
+                const validationStart = new Date().toISOString();
                 const footage = await ObjectService.getObject(key);
                 const filePath = await FileManager.writeFile('/tmp', footage);
-                console.warn(filePath);
 
                 const contentValidationResult = await ContentValidator.validateContent(filePath);
-                console.warn(contentValidationResult);
                 await MetadataService.updateMetadata(
-                    userId,
-                    assetId,
+                    owner,
                     MetadataPath.BASIC,
                     contentValidationResult.basic,
                 );
                 await MetadataService.updateMetadata(
-                    userId,
-                    assetId,
+                    owner,
                     MetadataPath.STREAM,
                     contentValidationResult.stream,
                 );
 
-                await MetadataService.updateProgress(userId, assetId, ProcessingStage.VALIDATION, true);
-                if ( contentValidationResult.success ){
+                await MetadataService.updateProgress(
+                    owner,
+                    ProcessingStage.Validation,
+                    ProcessingStage.Metadata,
+                    {
+                        status: Progress.COMPLETED,
+                        startTime: validationStart,
+                        error: 'N.A',
+                    },
+                );
 
+                if ( contentValidationResult.success ){
+                    const metadataStart = new Date().toISOString();
                     const contentMetadataResult = await MetadataExtractor.getContentMetadata(filePath);
-                    console.warn(contentMetadataResult);
                     await MetadataService.updateMetadata(
-                        userId,
-                        assetId,
+                        owner,
                         MetadataPath.TECHNICAL,
                         contentMetadataResult.technical,
                     );
 
                     await MetadataService.updateMetadata(
-                        userId,
-                        assetId,
+                        owner,
                         MetadataPath.QUALITY,
                         contentMetadataResult.quality,
                     );
 
-                    await MetadataService.updateProgress(userId, assetId, ProcessingStage.METADATA, true);
-                    await MetadataService.updateProgress(userId, assetId, ProcessingStage.ACCEPTED, true);
+                    await MetadataService.updateProgress(
+                        owner,
+                        ProcessingStage.Metadata,
+                        ProcessingStage.Accepted,
+                        {
+                            status: Progress.COMPLETED,
+                            startTime: metadataStart,
+                            error: 'N.A',
+                        },
+                    );
 
                     const task:Task = TaskService.createTask(
                         userId,
@@ -106,9 +116,8 @@ export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                     });
 
                     const response = await sqs.send(command);
-                    console.warn(response);
                     if (response.$metadata.httpStatusCode!==200){
-                        await MetadataService.markCriticalFailure(userId, assetId, true);
+                        await MetadataService.markCriticalFailure(owner, true);
                         throw new CustomError(
                             ErrorName.InternalError,
                             'Unable to send message to Task Queue',
@@ -119,7 +128,16 @@ export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                     }
 
                 } else {
-                    await MetadataService.updateProgress(userId, assetId, ProcessingStage.REJECTED, true);
+                    await MetadataService.updateProgress(
+                        owner,
+                        ProcessingStage.Accepted,
+                        ProcessingStage.Download,
+                        {
+                            status: Progress.FAILED,
+                            startTime: new Date().toISOString(),
+                            error: 'Validation Failed',
+                        },
+                    );
                 }
             } catch (error){
                 exceptionHandlerFunction(error);

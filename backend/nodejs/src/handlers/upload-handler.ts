@@ -1,10 +1,12 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 import { AuthConfig, IdentityService } from '../services/auth/identity-service';
+import { MetadataService } from '../services/data/metadata-service';
 import { UploadConfig, UploadService } from '../services/data/upload-service';
+import { DbConfig } from '../types/db.types';
 import { Request, Response } from '../types/request-response.types';
 import { Fault, CustomError, ErrorName, exceptionHandlerFunction } from '../utils/error-handling';
-import {  KeyService } from '../utils/key-service';
+import { KeyService, KeyOwner } from '../utils/key-service';
 import { ValidationField, ValidationResponse, RequestValidator } from '../utils/request-validator';
 
 const ROUTES = {
@@ -31,6 +33,12 @@ const uploadConfig: UploadConfig = {
     uploadTimeLimit: parseInt(process.env.UPLOAD_TIME_LIMIT!, 10),
 };
 
+const dbConfig: DbConfig = {
+    table: process.env.METADATASTORAGE_TABLE_NAME!,
+    region: process.env.AWS_DEFAULT_REGION!,
+};
+
+MetadataService.initialize(dbConfig);
 IdentityService.initialize(authConfig);
 UploadService.initialize(uploadConfig);
 
@@ -59,6 +67,17 @@ const uploadRequestFunc = async (request:Request):Promise<Response> => {
     const uploadServiceResponse = await UploadService.generatePreSignedPost(userId, key);
     if (!uploadServiceResponse){
         throw new CustomError(ErrorName.UploadError, 'Upload Service is down!', 503, Fault.SERVER, true);
+    }
+
+    const owner:KeyOwner = KeyService.getOwner(key);
+    if (!await MetadataService.initializeRecord(owner)){
+        throw new CustomError(
+            ErrorName.InternalError,
+            'Failed to initialize in Metadata Cache',
+            503,
+            Fault.SERVER,
+            true,
+        );
     }
 
     return {

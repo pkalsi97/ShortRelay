@@ -3,6 +3,11 @@ import { AttributeValue } from '@aws-sdk/client-dynamodb';
 export interface AssetProgress {
     M: Record<string, AttributeValue>;
 }
+export interface StageProgressUpdate {
+    status: string;
+    startTime: string;
+    error: string;
+}
 
 export interface AssetRecord extends Record<string, AttributeValue> {
     userId: { S: string };
@@ -15,6 +20,10 @@ export const createInitialRecord = (userId: string, assetId: string): AssetRecor
     userId: { S: userId },
     assetId: { S: assetId },
     createdAt: { S: new Date().toISOString() },
+    updatedAt: { S: new Date().toISOString() },
+    stage: { S: 'N.A' },
+    totalFiles: { N: '0' },
+    hasCriticalFailure: { BOOL: false },
     metadata: {
         M: {
             validation: {
@@ -29,25 +38,51 @@ export const createInitialRecord = (userId: string, assetId: string): AssetRecor
     },
     progress: {
         M: {
-            upload: { BOOL: false },
-            validation: { BOOL: false },
-            metadata: { BOOL: false },
-            accepted: { BOOL: false },
-            rejected: { BOOL: false },
-            download: { BOOL: false },
-            writeToTemp: { BOOL: false },
-            initializeProcessor: { BOOL: false },
-            generateThumbnail: { BOOL: false },
-            generateMP4Files: { BOOL: false },
-            generateHLSPlaylists: { BOOL: false },
-            generateIframePlaylists: { BOOL: false },
-            uploadTranscodedFootage: { BOOL: false },
-            totalFiles: { N: '0' },
-            postProcessingValidation: { BOOL: false },
-            completion: { BOOL: false },
-            distribution: { BOOL: false },
-            updatedAt: { S: new Date().toISOString() },
-            hasCriticalFailure: { BOOL: false },
+            upload: {
+                M: { },
+            },
+            validation: {
+                M: { },
+            },
+            metadata: {
+                M: { },
+            },
+            accepted: {
+                M: { },
+            },
+            download: {
+                M: { },
+            },
+            writeToStorage: {
+                M: { },
+            },
+            initializeProcessor: {
+                M: { },
+            },
+            generateThumbnail: {
+                M: { },
+            },
+            generateMP4Files: {
+                M: { },
+            },
+            generateHLSPlaylists: {
+                M: { },
+            },
+            generateIframePlaylists: {
+                M: { },
+            },
+            uploadTranscodedFootage: {
+                M: { },
+            },
+            postProcessingValidation: {
+                M: { },
+            },
+            completion: {
+                M: { },
+            },
+            distribution: {
+                M: { },
+            },
         },
     },
 });

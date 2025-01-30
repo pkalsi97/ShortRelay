@@ -15,7 +15,7 @@ import (
 )
 
 type StopWatch struct {
-    start time.Time
+    Start time.Time
     name  string
 }
 
@@ -64,20 +64,40 @@ func loadConfig() (*Config, error) {
 
 func NewStopWatch(name string) *StopWatch {
     sw := &StopWatch{
-        start: time.Now(),
+        Start: time.Now(),
         name:  name,
     }
     return sw
 }
+func (sw *StopWatch) GetStartTimeString() string {
+    return sw.Start.UTC().Format("2006-01-02T15:04:05.000Z")
+}
 
 func (sw *StopWatch) Stop() {
-    duration := time.Since(sw.start)
+    duration := time.Since(sw.Start)
     fmt.Printf(`{"step": "%s", "duration": %.3f}%s`, sw.name, duration.Seconds(), "\n")
 }
 
-func updateState(ctx context.Context, updater *db.ProgressUpdater, userId string, assetId string, state string, success bool) {
-    if err := updater.UpdateProgress(ctx, userId, assetId, state, success); err != nil {
-        log.Printf("Failed to update %s state: %v", state, err)
+func updateState(ctx context.Context, updater *db.ProgressUpdater, currentStage, nextStage string, sw *StopWatch, err error) {
+    var status string
+    var errorMsg string
+    
+    if err == nil {
+        status = "COMPLETED"
+        errorMsg = "N.A"
+    } else {
+        status = "FAILED"
+        errorMsg = err.Error()
+    }
+
+    updateErr := updater.UpdateProgress(ctx, currentStage, nextStage, db.StageProgressUpdate{
+        Status:    status,
+        StartTime: sw.GetStartTimeString(),
+        Error:     errorMsg,
+    })
+    
+    if updateErr != nil {
+        log.Printf("Failed to update %s state: %v", currentStage, updateErr)
     }
 }
 
@@ -109,10 +129,10 @@ func main() {
     }
     sw.Stop()
 
-    updater, err := db.NewProgressUpdater(config.AWSRegion, config.MetadataTable)
     ctx := context.Background()
     userID := config.UserID
     assetID := config.AssetID
+    updater, err := db.NewProgressUpdater(config.AWSRegion, config.MetadataTable , userID, assetID)
 
 
     // Step 2: Download
@@ -120,16 +140,16 @@ func main() {
     client, err := s3.NewS3Client(config.AWSRegion, config.TransportBucket)
     if err != nil {
         log.Printf("S3 client creation failed: %v", err)
-        updateState(ctx, updater, userID, assetID, db.StateDownload, false)
+        updateState(ctx, updater, db.StateDownload, db.StateWriteToStorage,sw ,err)
         os.Exit(1)
     }
     downloadedData, err := client.DownloadFile(config.InputKey)
     if err != nil {
         log.Printf("Download failed: %v", err)
-        updateState(ctx, updater, userID, assetID, db.StateDownload, false)
+        updateState(ctx, updater, db.StateDownload, db.StateWriteToStorage,sw ,err)
         os.Exit(1)
     }
-    updateState(ctx, updater, userID, assetID, db.StateDownload, true)
+    updateState(ctx, updater, db.StateDownload, db.StateWriteToStorage,sw ,err)
     sw.Stop()
 
     // Step 3: Write to temp
@@ -137,16 +157,16 @@ func main() {
     workDir = filepath.Join(config.FootageDir, config.UserID, config.AssetID)
     if err := os.MkdirAll(workDir, 0755); err != nil {
         log.Printf("Failed to create working directory: %v", err)
-        updateState(ctx, updater, userID, assetID, db.StateWriteToTemp, false)
+        updateState(ctx, updater, db.StateWriteToStorage, db.StateInitializeProcessor,sw ,err)
         os.Exit(1)
     }
     tempFile := filepath.Join(workDir, "input")
     if err := os.WriteFile(tempFile, downloadedData, 0644); err != nil {
         log.Printf("Failed to write temp file: %v", err)
-        updateState(ctx, updater, userID, assetID, db.StateWriteToTemp, false)
+        updateState(ctx, updater, db.StateWriteToStorage, db.StateInitializeProcessor,sw ,err)
         os.Exit(1)
     }
-    updateState(ctx, updater, userID, assetID, db.StateWriteToTemp, true)
+    updateState(ctx, updater, db.StateWriteToStorage, db.StateInitializeProcessor,sw ,err)
     sw.Stop()
 
     // Define resolutions
@@ -162,10 +182,10 @@ func main() {
     processor, err := transcoder.NewProcessor(tempFile, resolutions)
     if err != nil {
         log.Printf("Processor initialization failed: %v", err)
-        updateState(ctx, updater, userID, assetID, db.StateInitializeProcessor, false)
+        updateState(ctx, updater, db.StateInitializeProcessor, db.StateGenerateThumbnail,sw ,err)
         os.Exit(1)
     }
-    updateState(ctx, updater, userID, assetID, db.StateInitializeProcessor, true)
+    updateState(ctx, updater, db.StateInitializeProcessor, db.StateGenerateThumbnail,sw ,err)
     sw.Stop()
 
     // Step 5: Create Thumbnail
@@ -173,10 +193,10 @@ func main() {
     err = processor.GenerateThumbnail();
     if err != nil {
         log.Printf("GenerateThumbnail failed: %v", err)
-        updateState(ctx, updater, userID, assetID, db.StateGenerateThumbnail, false)
+        updateState(ctx, updater, db.StateGenerateThumbnail, db.StateGenerateMP4Files,sw ,err)
         os.Exit(1)
     }
-    updateState(ctx, updater, userID, assetID, db.StateGenerateThumbnail, true)
+    updateState(ctx, updater, db.StateGenerateThumbnail, db.StateGenerateMP4Files,sw ,err)
     sw.Stop()
 
 
@@ -185,10 +205,10 @@ func main() {
     err = processor.GenerateMP4Files(); 
     if err != nil {
         log.Printf("GenerateMP4Files failed: %v", err)
-        updateState(ctx, updater, userID, assetID, db.StateGenerateMP4Files, false)
+        updateState(ctx, updater, db.StateGenerateMP4Files, db.StateGenerateHLSPlaylists,sw ,err)
         os.Exit(1)
     }
-    updateState(ctx, updater, userID, assetID, db.StateGenerateMP4Files, true)
+    updateState(ctx, updater, db.StateGenerateMP4Files, db.StateGenerateHLSPlaylists,sw ,err)
     sw.Stop()
 
 
@@ -197,10 +217,10 @@ func main() {
     err = processor.GenerateHLSPlaylists(); 
     if err != nil {
         log.Printf("GenerateHLSPlaylists failed: %v", err)
-        updateState(ctx, updater, userID, assetID, db.StateGenerateHLSPlaylists, false)
+        updateState(ctx, updater, db.StateGenerateHLSPlaylists, db.StateGenerateIframePlaylists,sw ,err)
         os.Exit(1)
     }
-    updateState(ctx, updater, userID, assetID, db.StateGenerateHLSPlaylists, true)
+    updateState(ctx, updater, db.StateGenerateHLSPlaylists, db.StateGenerateIframePlaylists,sw ,err)
     sw.Stop()
 
     // Step 8: IframePlaylist
@@ -208,10 +228,9 @@ func main() {
     err = processor.GenerateIframePlaylists(); 
     if err != nil {
         log.Printf("GenerateIframePlaylists failed: %v", err)
-        updateState(ctx, updater, userID, assetID, db.StateGenerateIframePlaylists, false)
         os.Exit(1)
     }
-    updateState(ctx, updater, userID, assetID, db.StateGenerateIframePlaylists, true)
+    updateState(ctx, updater, db.StateGenerateIframePlaylists, db.StateUploadTranscodedFootage,sw ,err)
     sw.Stop()
 
     // Step 9: Upload
@@ -219,7 +238,7 @@ func main() {
     s3ContentClient, err := s3.NewS3Client(config.AWSRegion, config.ContentBucket)
     if err != nil {
         log.Printf("S3 content client creation failed: %v", err)
-        updateState(ctx, updater, userID, assetID, db.StateUploadTranscodedFootage, false)
+        updateState(ctx, updater, db.StateUploadTranscodedFootage, db.StatePostProcessingValidation,sw ,err)
         os.Exit(1)
     }
 
@@ -240,11 +259,11 @@ func main() {
     fileCount, err := uploadManager.UploadAllParallel(transcodedDir)
     if err != nil {
         log.Printf("Upload failed after processing %d files: %v", fileCount, err)
-        updateState(ctx, updater, userID, assetID, db.StateUploadTranscodedFootage, false)
+        updateState(ctx, updater, db.StateUploadTranscodedFootage, db.StatePostProcessingValidation,sw ,err)
         os.Exit(1)
     }
-    updateState(ctx, updater, userID, assetID, db.StateUploadTranscodedFootage, true)
-    if err := updater.UpdateFileCount(ctx, userID, assetID, fileCount); err != nil {
+    updateState(ctx, updater, db.StateUploadTranscodedFootage, db.StatePostProcessingValidation,sw ,err)
+    if err := updater.UpdateFileCount(ctx, fileCount); err != nil {
         log.Printf("Failed to update file count: %v", err)
     }
     sw.Stop()

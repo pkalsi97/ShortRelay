@@ -124,7 +124,7 @@ export default [
             'no-nested-ternary': 'error',
             'max-params': ['error', 6],
             'max-lines-per-function': ['error', {
-                max: 90,
+                max: 150,
                 skipBlankLines: true,
                 skipComments: true,
             }],

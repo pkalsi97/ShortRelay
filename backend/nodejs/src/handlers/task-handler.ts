@@ -12,6 +12,7 @@ const config = {
     subnets: process.env.SUBNET_IDS!.split(','),
     securityGroups: [process.env.SECURITY_GROUP_ID!],
 };
+// use updated at
 
 export const taskHandler = async (event: SQSEvent): Promise<void> => {
     for (const record of event.Records) {
@@ -80,6 +81,4 @@ export const taskHandler = async (event: SQSEvent): Promise<void> => {
 // Both FARGATE and FARGATE_SPOT providers
 // instance limit
 // dql
-
-// dynamically calculate FFMPEG threads and queue size
 // auto scaling
