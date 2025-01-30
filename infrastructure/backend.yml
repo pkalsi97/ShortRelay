@@ -15,6 +15,8 @@ Globals:
         TRANSPORTSTORAGE_BUCKET_NAME: !Ref TransportStorage
         ALLOWED_ORIGIN: !Ref AllowedOrigin
         AES_KEY_UTIL: !Ref AesKeyUtil
+        FFMPEG_PATH: /opt/ffmpeg/ffmpeg
+        FFPROBE_PATH: /opt/ffmpeg/ffprobe
     LoggingConfig:
       ApplicationLogLevel: WARN
       LogFormat: JSON
@@ -468,7 +470,7 @@ Resources:
   ValidationHandler:
     Type: AWS::Serverless::Function
     Properties:
-      Description: Completion Handler
+      Description: Validation Handler
       CodeUri: ./dist
       Handler: handlers/validation-handler.validationHandler
       Runtime: nodejs18.x
@@ -484,6 +486,32 @@ Resources:
             QueueName: !GetAtt TaskQueue.QueueName
         - DynamoDBCrudPolicy:
             TableName: !Ref MetadataStorage
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:GetObjectAcl
+                - s3:GetObjectLegalHold
+                - s3:GetObjectRetention
+                - s3:GetObjectTorrent
+                - s3:GetObjectVersion
+                - s3:GetObjectVersionAcl
+                - s3:GetObjectVersionForReplication
+                - s3:GetObjectVersionTorrent
+                - s3:ListBucket
+                - s3:ListBucketMultipartUploads
+                - s3:ListBucketVersions
+                - s3:ListMultipartUploadParts
+                - s3:AbortMultipartUpload
+                - s3:DeleteObject
+                - s3:DeleteObjectVersion
+                - s3:PutObject
+                - s3:PutObjectLegalHold
+                - s3:PutObjectRetention
+                - s3:RestoreObject
+              Resource:
+                - !Sub arn:${AWS::Partition}:s3:::${TransportStorage}
+                - !Sub arn:${AWS::Partition}:s3:::${TransportStorage}/*
       Layers:
         - !Ref ResourceLayer
       Events:
@@ -499,6 +527,8 @@ Resources:
           TASKQUEUE_QUEUE_URL: !Ref TaskQueue
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+          TRANSPORTSTORAGE_BUCKET_NAME: !Ref TransportStorage
+          TRANSPORTSTORAGE_BUCKET_ARN: !GetAtt TransportStorage.Arn
   # Master resource layer for all lambdas
   ResourceLayer:
     Type: AWS::Serverless::LayerVersion

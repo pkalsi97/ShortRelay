@@ -10,6 +10,11 @@ import {
     ContentValidationResult,
 } from '../../types/metadata.types';
 
+if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH || '/opt/ffmpeg/ffmpeg');
+    ffmpeg.setFfprobePath(process.env.FFPROBE_PATH || '/opt/ffprobe/ffprobe');
+}
+
 const SUPPORTED_FORMATS = ['mp4', 'mov', 'avi', 'mkv'];
 const SUPPORTED_VIDEO_CODECS = ['h264', 'hevc', 'vp8', 'vp9'];
 const SUPPORTED_AUDIO_CODECS = ['aac', 'mp3', 'opus'];

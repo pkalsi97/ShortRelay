@@ -37,6 +37,7 @@ export const eventHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> =
                     s3Events.Records.map(async (s3Event) => {
                         const key:string = s3Event.s3.object.key;
                         const bucket:string = s3Event.s3.bucket.name;
+                        console.warn(`Triggered for ${key}`);
                         try {
                             const owner: KeyOwner = KeyService.getOwner(key);
                             const userId: string = owner.userId;
@@ -68,6 +69,7 @@ export const eventHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> =
                             });
 
                             const response = await sqs.send(command);
+                            console.warn(response);
                             if (response.$metadata.httpStatusCode!==200){
                                 throw new CustomError(
                                     ErrorName.InternalError,

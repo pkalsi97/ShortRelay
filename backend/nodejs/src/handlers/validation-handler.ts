@@ -1,6 +1,6 @@
-
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { SQSEvent, SQSBatchResponse, SQSBatchItemFailure } from 'aws-lambda';
+import ffmpeg from 'fluent-ffmpeg';
 
 import { MetadataExtractor } from '../services/content/content-metadata-service';
 import { ContentValidator } from '../services/content/content-validation-service';
@@ -14,6 +14,10 @@ import { KeyOwner, KeyService } from '../utils/key-service';
 import { TaskService } from '../utils/task-creator';
 
 // Initialize
+if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH || '/opt/ffmpeg/ffmpeg');
+    ffmpeg.setFfprobePath(process.env.FFPROBE_PATH || '/opt/ffprobe/ffprobe');
+}
 
 const dbConfig: DbConfig = {
     table: process.env.METADATASTORAGE_TABLE_NAME!,
@@ -32,12 +36,15 @@ const sqs = new SQSClient({
 });
 
 export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> => {
+    const timer = { start: Date.now(), stop: () => `${((Date.now() - timer.start) / 1000).toFixed(3)}s` };
+
     const batchItemFailures: SQSBatchItemFailure[] = [];
     await Promise.all(
         messages.Records.map(async (sqsRecord) => {
             try {
                 const task = JSON.parse(sqsRecord.body) as Task;
                 const key:string = task.inputKey;
+                console.warn(`Triggered  Validation for ${key}`);
 
                 const owner: KeyOwner = KeyService.getOwner(key);
                 const userId: string = owner.userId;
@@ -45,8 +52,10 @@ export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
 
                 const footage = await ObjectService.getObject(key);
                 const filePath = await FileManager.writeFile('/tmp', footage);
+                console.warn(filePath);
 
                 const contentValidationResult = await ContentValidator.validateContent(filePath);
+                console.warn(contentValidationResult);
                 await MetadataService.updateMetadata(
                     userId,
                     assetId,
@@ -61,11 +70,10 @@ export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                 );
 
                 await MetadataService.updateProgress(userId, assetId, ProcessingStage.VALIDATION, true);
-
                 if ( contentValidationResult.success ){
 
                     const contentMetadataResult = await MetadataExtractor.getContentMetadata(filePath);
-
+                    console.warn(contentMetadataResult);
                     await MetadataService.updateMetadata(
                         userId,
                         assetId,
@@ -98,6 +106,7 @@ export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                     });
 
                     const response = await sqs.send(command);
+                    console.warn(response);
                     if (response.$metadata.httpStatusCode!==200){
                         await MetadataService.markCriticalFailure(userId, assetId, true);
                         throw new CustomError(
@@ -119,6 +128,7 @@ export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                 });
             } finally {
                 await FileManager.cleanUpTmp();
+                console.warn(`Duration: ${timer.stop()}`);
             }
         }),
     );
