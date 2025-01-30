@@ -8,6 +8,22 @@ phases:
     commands:
       - cd backend/nodejs
       - npm install --quiet
+      # Layer dependencies
+      - echo "Installing layer dependencies..."
+      - cd src/layers/resource-layer/nodejs && npm install --quiet && cd ../../../..
+      
+      - mkdir -p src/layers/resource-layer/ffmpeg
+      - cd src/layers/resource-layer
+      - curl -s -O https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-arm64-static.tar.xz
+      - tar xf ffmpeg-git-arm64-static.tar.xz > /dev/null 2>&1
+      - cp ffmpeg-git-*/ffmpeg ffmpeg/
+      - cp ffmpeg-git-*/ffprobe ffmpeg/
+      - chmod +x ffmpeg/ffmpeg ffmpeg/ffprobe
+      - rm -rf ffmpeg-git-* ffmpeg-git-arm64-static.tar.xz
+      - echo "Creating layer zip..."
+      - zip -q -r ../../../resource-layer.zip nodejs ffmpeg
+      - cd ../../../
+      - rm -rf src/layers/resource-layer/ffmpeg/*
       - cd ..
       
   pre_build:
@@ -44,8 +60,9 @@ phases:
 
       - cd nodejs
       - rm -rf node_modules
-      - npm prune --omit=dev --quiet
+      - rm -rf src/layers/resource-layer/opt/ffmpeg/*
       - rm -rf dist/workers/*
+      - npm prune --omit=dev --quiet
       - cd ..
 
 artifacts:
@@ -54,4 +71,5 @@ artifacts:
     - nodejs/dist/**/*
     - nodejs/package.json
     - nodejs/package-lock.json
+    - nodejs/resource-layer.zip
   base-directory: backend
