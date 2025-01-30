@@ -32,6 +32,8 @@ export const createInitialRecord = (userId: string, assetId: string): AssetRecor
             generateHLSPlaylists: { BOOL: false },
             generateIframePlaylists: { BOOL: false },
             uploadTranscodedFootage: { BOOL: false },
+            totalFiles: { N : "0"},
+            postProcessingValidation: { BOOL: false },
             completion: { BOOL: false },
             distribution: { BOOL: false },
             updatedAt: { S: new Date().toISOString() },
