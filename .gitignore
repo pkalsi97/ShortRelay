@@ -60,3 +60,5 @@ EOF
 dev
 
 notes.txt
+
+/backend/workers/processor/internal/validation
