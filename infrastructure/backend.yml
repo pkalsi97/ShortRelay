@@ -74,6 +74,9 @@ Parameters:
   DefaultSecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
     Description: Default Security Group ID for ECS Tasks
+  DefaultRouteTableId:
+    Type: String
+    Description: Default VPC's route table ID for VPC endpoints
   Environment:
     Type: String
     Description: Deployment Environment
