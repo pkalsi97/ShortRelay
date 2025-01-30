@@ -2,6 +2,7 @@
   "name": "shortrelay",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "scripts": {
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
