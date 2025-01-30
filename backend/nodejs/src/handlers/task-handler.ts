@@ -66,6 +66,7 @@ export const taskHandler = async (event: SQSEvent): Promise<void> => {
             });
 
             const response = await ecsClient.send(command);
+            console.warn(response.failures);
 
         } catch (error) {
             console.error('Error processing task:', error);
@@ -77,7 +78,7 @@ export const taskHandler = async (event: SQSEvent): Promise<void> => {
 // Multiple AZs
 // Multiple subnets
 // Both FARGATE and FARGATE_SPOT providers
-// instance limit 
+// instance limit
 // dql
 
 // dynamically calculate FFMPEG threads and queue size
