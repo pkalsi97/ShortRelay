@@ -71,9 +71,6 @@ Parameters:
   DefaultSubnetIds:
     Type: String
     Description: Comma-separated list of subnet IDs
-  DefaultRouteTableId:
-    Type: String
-    Description: Default VPC's route table ID for VPC endpoints
   DefaultSecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
     Description: Default Security Group ID for ECS Tasks
@@ -940,8 +937,6 @@ Resources:
               Value: !Ref MetadataStorage
             - Name: FOOTAGE_DIR
               Value: /tmp/footage
-            - Name: FFMPEG_THREADS
-              Value: "15"
           LogConfiguration:
             LogDriver: awslogs
             Options:
