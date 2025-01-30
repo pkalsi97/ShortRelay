@@ -36,7 +36,6 @@ const sqs = new SQSClient({
 });
 
 export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> => {
-    const timer = { start: Date.now(), stop: () => `${((Date.now() - timer.start) / 1000).toFixed(3)}s` };
     const batchItemFailures: SQSBatchItemFailure[] = [];
     await Promise.all(
         messages.Records.map(async (sqsRecord) => {
@@ -146,7 +145,6 @@ export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                 });
             } finally {
                 await FileManager.cleanUpTmp();
-                console.warn(`Duration: ${timer.stop()}`);
             }
         }),
     );
