@@ -465,6 +465,34 @@ Resources:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+  ValidationHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Completion Handler
+      CodeUri: ./dist
+      Handler: handlers/validation-handler.validationHandler
+      Runtime: nodejs18.x
+      MemorySize: 3000
+      Timeout: 120
+      Tracing: Active
+      Architectures:
+        - arm64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXrayWriteOnlyAccess
+      Layers:
+        - !Ref ResourceLayer
+  # Master resource layer for all lambdas
+  ResourceLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Layer ${ResourceName}
+        - ResourceName: ResourceLayer
+      ContentUri: ./resource-layer.zip
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: nodejs18.x
   # -----------------------------------------------------------------------------------------------------------------------
   # STORAGE
   # -----------------------------------------------------------------------------------------------------------------------
