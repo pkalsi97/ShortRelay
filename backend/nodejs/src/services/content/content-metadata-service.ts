@@ -1,138 +1,56 @@
-import * as fs from 'fs';
 import { promisify } from 'util';
 
 import ffmpeg, { FfprobeData, FfprobeStream } from 'fluent-ffmpeg';
 
-import { TechnicalMetadata, QualityMetrics, ContentMetadata, ContentMetadataResult } from '../../types/metadata.types';
+import { TechnicalMetadata, QualityMetrics, ContentMetadataResult } from '../../types/metadata.types';
+
+interface StreamInfo {
+    videoStream?: FfprobeStream;
+    audioStream?: FfprobeStream;
+}
+
+interface PlayabilityResult {
+    isPlayable: boolean;
+    error?: string;
+}
 
 const ffprobeAsync = promisify<string, FfprobeData>(ffmpeg.ffprobe);
 
-const getContentMetadata = async (filePath: string): Promise<ContentMetadataResult> => {
-    const [technicalMetadata, qualityMetrics, contentMetadata] = await Promise.all([
-        extractTechnicalMetadata(filePath),
-        extractQualityMetrics(filePath),
-        extractContentMetadata(filePath),
-    ]);
+const getDefaultTechnicalMetadata = (): TechnicalMetadata => ({
+    containerFormat: 'N/A',
+    videoCodec: 'N/A',
+    audioCodec: 'N/A',
+    duration: 'N/A',
+    bitrate: 'N/A',
+    frameRate: 'N/A',
+    resolution: {
+        width: 'N/A',
+        height: 'N/A',
+    },
+    aspectRatio: 'N/A',
+    colorSpace: 'N/A',
+});
 
-    return {
-        technical: technicalMetadata,
-        quality: qualityMetrics,
-        content: contentMetadata,
-    };
-};
+const getDefaultQualityMetrics = (): QualityMetrics => ({
+    videoQualityScore: 'N/A',
+    audioQualityScore: 'N/A',
+    corruptionStatus: {
+        isCorrupted: false,
+        details: 'Unable to determine',
+    },
+    missingFrames: 'N/A',
+    audioSync: {
+        inSync: false,
+        offsetMs: 'N/A',
+    },
+});
 
-const extractTechnicalMetadata = async (filePath: string): Promise<TechnicalMetadata> => {
-    const metadata = await ffprobeAsync(filePath).catch(() => null);
-    if (!metadata) {
-        return getDefaultTechnicalMetadata();
-    }
+const getStreams = (metadata: FfprobeData): StreamInfo => ({
+    videoStream: metadata.streams.find(s => s.codec_type === 'video'),
+    audioStream: metadata.streams.find(s => s.codec_type === 'audio'),
+});
 
-    const videoStream = metadata.streams.find(
-        (s: FfprobeStream) => s.codec_type === 'video',
-    );
-    const audioStream = metadata.streams.find(
-        (s: FfprobeStream) => s.codec_type === 'audio',
-    );
-
-    return {
-        containerFormat: metadata.format?.format_name?.split(',')[0] || 'N/A',
-        videoCodec: videoStream?.codec_name || 'N/A',
-        audioCodec: audioStream?.codec_name || 'N/A',
-        duration: metadata.format?.duration ? metadata.format.duration : 0,
-        bitrate: metadata.format?.bit_rate ? metadata.format.bit_rate : 0,
-        frameRate: videoStream?.r_frame_rate || 'N/A',
-        resolution: {
-            width: videoStream?.width || 0,
-            height: videoStream?.height || 0,
-        },
-        aspectRatio: videoStream?.display_aspect_ratio || 'N/A',
-        colorSpace: videoStream?.color_space || 'N/A',
-    };
-};
-
-const extractContentMetadata = async (filePath: string): Promise<ContentMetadata> => {
-    const metadata = await ffprobeAsync(filePath).catch(() => null);
-    if (!metadata) {
-        return getDefaultContentMetadata();
-    }
-
-    const tags = metadata.format?.tags as { creation_time?: string } || {};
-
-    return {
-        creationDate: tags.creation_time || 'N/A',
-        lastModified: await fs.promises.stat(filePath)
-            .then(stats => stats.mtime.toISOString())
-            .catch(() => 'N/A'),
-    };
-};
-
-const extractQualityMetrics = async (filePath: string): Promise<QualityMetrics> => {
-    const metadata = await ffprobeAsync(filePath).catch(() => null);
-    if (!metadata) {
-        return getDefaultQualityMetrics();
-    }
-
-    const playabilityCheck = await checkPlayability(filePath);
-
-    const videoStream = metadata.streams.find(s => s.codec_type === 'video');
-    const audioStream = metadata.streams.find(s => s.codec_type === 'audio');
-
-    return {
-        videoQualityScore: calculateVideoQuality(videoStream),
-        audioQualityScore: calculateAudioQuality(audioStream),
-        corruptionStatus: {
-            isCorrupted: !playabilityCheck.isPlayable,
-            details: playabilityCheck.error || 'No corruption detected',
-        },
-        missingFrames: calculateMissingFrames(videoStream),
-        audioSync: {
-            inSync: true,
-            offsetMs: 'N/A',
-        },
-    };
-};
-
-const getDefaultTechnicalMetadata = (): TechnicalMetadata => {
-    return {
-        containerFormat: 'N/A',
-        videoCodec: 'N/A',
-        audioCodec: 'N/A',
-        duration: 'N/A',
-        bitrate: 'N/A',
-        frameRate: 'N/A',
-        resolution: {
-            width: 'N/A',
-            height: 'N/A',
-        },
-        aspectRatio: 'N/A',
-        colorSpace: 'N/A',
-    };
-};
-
-const getDefaultContentMetadata = (): ContentMetadata => {
-    return {
-        creationDate: 'N/A',
-        lastModified: 'N/A',
-    };
-};
-
-const getDefaultQualityMetrics = ():QualityMetrics => {
-    return {
-        videoQualityScore: 'N/A',
-        audioQualityScore: 'N/A',
-        corruptionStatus: {
-            isCorrupted: false,
-            details: 'Unable to determine',
-        },
-        missingFrames: 'N/A',
-        audioSync: {
-            inSync: false,
-            offsetMs: 'N/A',
-        },
-    };
-};
-
-const checkPlayability = async (filePath: string): Promise<{ isPlayable: boolean; error?: string }> => {
+const checkPlayability = async (filePath: string): Promise<PlayabilityResult> => {
     return new Promise((resolve) => {
         const outputPath = process.platform === 'win32' ? 'NUL' : '/dev/null';
         ffmpeg()
@@ -170,14 +88,19 @@ const calculateVideoQuality = (videoStream?: FfprobeStream): number | 'N/A' => {
 const calculateAudioQuality = (audioStream?: FfprobeStream): number | 'N/A' => {
     if (!audioStream) {
         return 'N/A';
-
     }
+
     const bitrate = parseInt(audioStream.bit_rate || '0');
     if (!bitrate) {
         return 'N/A';
     }
 
     return Math.min(100, Math.round((bitrate / 320000) * 100));
+};
+
+const calculateExpectedFrames = (duration: number, frameRate: string): number => {
+    const [num, den] = frameRate.split('/').map(Number);
+    return Math.round(duration * (num / den));
 };
 
 const calculateMissingFrames = (videoStream?: FfprobeStream): number | 'N/A' => {
@@ -201,9 +124,62 @@ const calculateMissingFrames = (videoStream?: FfprobeStream): number | 'N/A' => 
         : 'N/A';
 };
 
-const calculateExpectedFrames = (duration: number, frameRate: string): number => {
-    const [num, den] = frameRate.split('/').map(Number);
-    return Math.round(duration * (num / den));
+// Main extraction functions
+const extractTechnicalMetadata = (
+    metadata: FfprobeData,
+    { videoStream, audioStream }: StreamInfo,
+): TechnicalMetadata => ({
+    containerFormat: metadata.format?.format_name?.split(',')[0] || 'N/A',
+    videoCodec: videoStream?.codec_name || 'N/A',
+    audioCodec: audioStream?.codec_name || 'N/A',
+    duration: metadata.format?.duration ? metadata.format.duration : 0,
+    bitrate: metadata.format?.bit_rate ? metadata.format.bit_rate : 0,
+    frameRate: videoStream?.r_frame_rate || 'N/A',
+    resolution: {
+        width: videoStream?.width || 0,
+        height: videoStream?.height || 0,
+    },
+    aspectRatio: videoStream?.display_aspect_ratio || 'N/A',
+    colorSpace: videoStream?.color_space || 'N/A',
+});
+
+const extractQualityMetrics = (
+    { videoStream, audioStream }: StreamInfo,
+    playabilityCheck: PlayabilityResult,
+): QualityMetrics => ({
+    videoQualityScore: calculateVideoQuality(videoStream),
+    audioQualityScore: calculateAudioQuality(audioStream),
+    corruptionStatus: {
+        isCorrupted: !playabilityCheck.isPlayable,
+        details: playabilityCheck.error || 'No corruption detected',
+    },
+    missingFrames: calculateMissingFrames(videoStream),
+    audioSync: {
+        inSync: true,
+        offsetMs: 'N/A',
+    },
+});
+
+const getContentMetadata = async (filePath: string): Promise<ContentMetadataResult> => {
+    try {
+        const [metadata, playabilityCheck] = await Promise.all([
+            ffprobeAsync(filePath),
+            checkPlayability(filePath),
+        ]);
+
+        const streams = getStreams(metadata);
+
+        return {
+            technical: extractTechnicalMetadata(metadata, streams),
+            quality: extractQualityMetrics(streams, playabilityCheck),
+        };
+    } catch (error) {
+        console.error(error);
+        return {
+            technical: getDefaultTechnicalMetadata(),
+            quality: getDefaultQualityMetrics(),
+        };
+    }
 };
 
 export const MetadataExtractor = {
