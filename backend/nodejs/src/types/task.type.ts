@@ -1,10 +1,11 @@
 export enum TaskType {
-    TRANSCODE = 'TRANSCODE'
+    TRANSCODE = 'TRANSCODE',
+    VALIDATION = 'VALIDATION'
 }
 
 export enum WorkerType {
     PROCESSOR = 'PROCESSOR',
-    HELPER = 'HELPER'
+    VALIDATOR = 'VALIDATOR'
 }
 
 export interface Location {
