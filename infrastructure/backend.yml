@@ -74,9 +74,6 @@ Parameters:
   DefaultSecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
     Description: Default Security Group ID for ECS Tasks
-  DefaultRouteTableId:
-    Type: String
-    Description: Default VPC's route table ID for VPC endpoints
   Environment:
     Type: String
     Description: Deployment Environment
@@ -379,7 +376,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref MetadataStorage
         - SQSSendMessagePolicy:
-            QueueName: !GetAtt TaskQueue.QueueName
+            QueueName: !GetAtt ValidationQueue.QueueName
       Events:
         UploadEventQueue:
           Type: SQS
@@ -391,9 +388,9 @@ Resources:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
-          TASKQUEUE_QUEUE_NAME: !GetAtt TaskQueue.QueueName
-          TASKQUEUE_QUEUE_ARN: !GetAtt TaskQueue.Arn
-          TASKQUEUE_QUEUE_URL: !Ref TaskQueue
+          VALIDATIONQUEUE_QUEUE_NAME: !GetAtt ValidationQueue.QueueName
+          VALIDATIONQUEUE_QUEUE_ARN: !GetAtt ValidationQueue.Arn
+          VALIDATIONQUEUE_QUEUE_URL: !Ref ValidationQueue
   TaskHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -483,8 +480,25 @@ Resources:
       Policies:
         - AWSLambdaBasicExecutionRole
         - AWSXrayWriteOnlyAccess
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt TaskQueue.QueueName
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataStorage
       Layers:
         - !Ref ResourceLayer
+      Events:
+        ValidationQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ValidationQueue.Arn
+            BatchSize: 1
+      Environment:
+        Variables:
+          TASKQUEUE_QUEUE_NAME: !GetAtt TaskQueue.QueueName
+          TASKQUEUE_QUEUE_ARN: !GetAtt TaskQueue.Arn
+          TASKQUEUE_QUEUE_URL: !Ref TaskQueue
+          METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
+          METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
   # Master resource layer for all lambdas
   ResourceLayer:
     Type: AWS::Serverless::LayerVersion
@@ -679,6 +693,13 @@ Resources:
       MessageRetentionPeriod: 345600
       VisibilityTimeout: 60
       DelaySeconds: 5
+  ValidationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AppId}-ValidationQueue
+      MessageRetentionPeriod: 345600
+      VisibilityTimeout: 120
+      DelaySeconds: 10
   # -----------------------------------------------------------------------------------------------------------------------
   # NETWORK
   # -----------------------------------------------------------------------------------------------------------------------
