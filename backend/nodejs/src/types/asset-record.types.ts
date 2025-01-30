@@ -15,16 +15,26 @@ export const createInitialRecord = (userId: string, assetId: string): AssetRecor
     userId: { S: userId },
     assetId: { S: assetId },
     createdAt: { S: new Date().toISOString() },
+    metadata: {
+        M: {
+            validation: {
+                M: {
+                    basic: { M: {} },
+                    stream: { M: {} },
+                },
+            },
+            technical: { M: {} },
+            quality: { M: {} },
+        },
+    },
     progress: {
         M: {
             upload: { BOOL: false },
-            basicValidation: { BOOL: false },
-            streamValidation: { BOOL: false },
+            validation: { BOOL: false },
+            metadata: { BOOL: false },
             accepted: { BOOL: false },
-            technicalMetadata: { BOOL: false },
-            qualityMetadata: { BOOL: false },
-            transcodingTask: { BOOL: false },
-            download:{ BOOL: false },
+            rejected: { BOOL: false },
+            download: { BOOL: false },
             writeToTemp: { BOOL: false },
             initializeProcessor: { BOOL: false },
             generateThumbnail: { BOOL: false },
@@ -32,7 +42,7 @@ export const createInitialRecord = (userId: string, assetId: string): AssetRecor
             generateHLSPlaylists: { BOOL: false },
             generateIframePlaylists: { BOOL: false },
             uploadTranscodedFootage: { BOOL: false },
-            totalFiles: { N : "0"},
+            totalFiles: { N: '0' },
             postProcessingValidation: { BOOL: false },
             completion: { BOOL: false },
             distribution: { BOOL: false },
