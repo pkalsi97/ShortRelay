@@ -23,15 +23,17 @@ const getFile = async (path:string): Promise<fs.ReadStream> => {
     return fs.createReadStream(path);
 };
 
-const cleanUp = async (path:string): Promise<boolean> => {
+const cleanUpTmp = async (): Promise<boolean> => {
     try {
-        await fs.promises.access(path, fs.constants.F_OK);
-        await fs.promises.unlink(path);
+        const files = await fs.promises.readdir('/tmp');
+        await Promise.all(
+            files.map(file =>
+                fs.promises.unlink(path.join('/tmp', file)),
+            ),
+        );
         return true;
     } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-            return true;
-        }
+        console.error('Cleanup error:', error);
         return false;
     }
 };
@@ -39,5 +41,5 @@ const cleanUp = async (path:string): Promise<boolean> => {
 export const FileManager = {
     writeFile,
     getFile,
-    cleanUp,
+    cleanUpTmp,
 };
