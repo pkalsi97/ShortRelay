@@ -56,14 +56,14 @@ export const eventHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> =
                             const task:Task = TaskService.createTask(
                                 userId,
                                 assetId,
-                                TaskType.TRANSCODE,
+                                TaskType.VALIDATION,
                                 key,
                                 key,
-                                WorkerType.PROCESSOR,
+                                WorkerType.VALIDATOR,
                             );
 
                             const command = new SendMessageCommand({
-                                QueueUrl: process.env.TASKQUEUE_QUEUE_URL!,
+                                QueueUrl: process.env.VALIDATIONQUEUE_QUEUE_URL!,
                                 MessageBody: JSON.stringify(task),
                             });
 
