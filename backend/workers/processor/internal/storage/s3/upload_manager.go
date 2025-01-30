@@ -9,6 +9,11 @@ import (
 
 )
 
+type UploadResult struct {
+    TotalFiles int
+    Error      error
+}
+
 type UploadManagerConfig struct {
     MaxWorkers int
     BufferSize int
@@ -46,10 +51,11 @@ func NewUploadManager(client *S3Client, userID, assetID, contentBucket string, c
     }
 }
 
-func (u *UploadManager) UploadAllParallel(workDir string) error {
+func (u *UploadManager) UploadAllParallel(workDir string) (int, error) {
     files := make(chan uploadTask, u.bufferSize)
     errors := make(chan error, u.bufferSize)
     var wg sync.WaitGroup
+    var totalFiles int
 
     for i := 0; i < u.maxWorkers; i++ {
         wg.Add(1)
@@ -65,6 +71,7 @@ func (u *UploadManager) UploadAllParallel(workDir string) error {
             }
 
             if !info.IsDir() {
+                totalFiles++
                 relPath, err := filepath.Rel(workDir, path)
                 if err != nil {
                     errors <- fmt.Errorf("failed to get relative path for %s: %v", path, err)
@@ -96,9 +103,9 @@ func (u *UploadManager) UploadAllParallel(workDir string) error {
     }
 
     if len(errs) > 0 {
-        return fmt.Errorf("upload errors (%d): %v", len(errs), errs)
+        return totalFiles, fmt.Errorf("upload errors (%d): %v", len(errs), errs)
     }
-    return nil
+    return totalFiles, nil
 }
 
 func (u *UploadManager) uploadWorker(files <-chan uploadTask, errors chan<- error, wg *sync.WaitGroup) {

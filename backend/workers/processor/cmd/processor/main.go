@@ -70,21 +70,9 @@ func NewStopWatch(name string) *StopWatch {
     return sw
 }
 
-const (
-    bold    = "\033[1m"
-    blue    = "\033[34m"
-    reset   = "\033[0m"
-    format  = "%s[STEP]%s %-25s %s Duration: %.3fs%s\n"
-)
-
-
 func (sw *StopWatch) Stop() {
     duration := time.Since(sw.start)
-    fmt.Printf(format,
-        bold, reset,
-        sw.name,
-        blue, duration.Seconds(), reset,
-    )
+    fmt.Printf(`{"step": "%s", "duration": %.3f}%s`, sw.name, duration.Seconds(), "\n")
 }
 
 func updateState(ctx context.Context, updater *db.ProgressUpdater, userId string, assetId string, state string, success bool) {
@@ -100,13 +88,16 @@ func main() {
     defer func() {
         if r := recover(); r != nil {
             log.Printf("Recovered from fatal panic: %v", r)
+            os.Exit(1)
         }
         if workDir != "" {
             if err := os.RemoveAll(workDir); err != nil {
                 log.Printf("Failed to cleanup working directory: %v", err)
+                os.Exit(1)
             }
         }
         swm.Stop()
+        os.Exit(0)
     }()
 
     // Step 1: Initialize
@@ -246,11 +237,15 @@ func main() {
     )
 
     transcodedDir := filepath.Join(workDir, "transcoded")
-    if err := uploadManager.UploadAllParallel(transcodedDir); err != nil {
-        log.Printf("Upload failed: %v", err)
+    fileCount, err := uploadManager.UploadAllParallel(transcodedDir)
+    if err != nil {
+        log.Printf("Upload failed after processing %d files: %v", fileCount, err)
         updateState(ctx, updater, userID, assetID, db.StateUploadTranscodedFootage, false)
         os.Exit(1)
     }
     updateState(ctx, updater, userID, assetID, db.StateUploadTranscodedFootage, true)
+    if err := updater.UpdateFileCount(ctx, userID, assetID, fileCount); err != nil {
+        log.Printf("Failed to update file count: %v", err)
+    }
     sw.Stop()
 }

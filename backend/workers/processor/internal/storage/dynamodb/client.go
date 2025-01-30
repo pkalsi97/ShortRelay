@@ -25,6 +25,7 @@ const (
     StateGenerateHLSPlaylists  = "generateHLSPlaylists"
     StateGenerateIframePlaylists = "generateIframePlaylists"
     StateUploadTranscodedFootage = "uploadTranscodedFootage"
+    StateTotalFiles = "totalFiles"
 )
 
 func NewProgressUpdater(region, tableName string) (*ProgressUpdater, error) {
@@ -64,6 +65,32 @@ func (p *ProgressUpdater) UpdateProgress(ctx context.Context, userId, assetId, s
     _, err := p.client.UpdateItem(ctx, input)
     if err != nil {
         return fmt.Errorf("failed to update progress: %v", err)
+    }
+
+    return nil
+}
+
+func (p *ProgressUpdater) UpdateFileCount(ctx context.Context, userId, assetId string, count int) error {
+    input := &dynamodb.UpdateItemInput{
+        TableName: &p.tableName,
+        Key: map[string]types.AttributeValue{
+            "userId":  &types.AttributeValueMemberS{Value: userId},
+            "assetId": &types.AttributeValueMemberS{Value: assetId},
+        },
+        UpdateExpression: aws.String("SET #progress.#totalFiles = :count, #progress.updatedAt = :time"),
+        ExpressionAttributeNames: map[string]string{
+            "#progress":   "progress",
+            "#totalFiles": StateTotalFiles,
+        },
+        ExpressionAttributeValues: map[string]types.AttributeValue{
+            ":count": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", count)},
+            ":time":  &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339)},
+        },
+    }
+
+    _, err := p.client.UpdateItem(ctx, input)
+    if err != nil {
+        return fmt.Errorf("failed to update file count: %v", err)
     }
 
     return nil
