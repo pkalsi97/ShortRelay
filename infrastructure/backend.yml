@@ -1092,7 +1092,7 @@ Resources:
   # -----------------------------------------------------------------------------------------------------------------------
   # CloudFront
   # -----------------------------------------------------------------------------------------------------------------------
-CloudFrontOriginAccessControl:
+  CloudFrontOriginAccessControl:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
       OriginAccessControlConfig:
@@ -1101,7 +1101,7 @@ CloudFrontOriginAccessControl:
         SigningBehavior: always
         SigningProtocol: sigv4
 
-ContentDistribution:
+  ContentDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
@@ -1137,7 +1137,7 @@ ContentDistribution:
         HttpVersion: http2
         PriceClass: PriceClass_200
 
-CORSPolicy:
+  CORSPolicy:
     Type: AWS::CloudFront::ResponseHeadersPolicy
     Properties:
       ResponseHeadersPolicyConfig:
@@ -1162,7 +1162,7 @@ CORSPolicy:
           OriginOverride: false
         SecurityHeadersConfig:
           ContentSecurityPolicy:
-            ContentSecurityPolicy: "default-src 'none'; img-src 'self'; media-src 'self'"
+            ContentSecurityPolicy: default-src 'none'; img-src 'self'; media-src 'self'
             Override: true
           StrictTransportSecurity:
             AccessControlMaxAgeSec: 31536000
@@ -1171,9 +1171,9 @@ CORSPolicy:
             Override: true
 
 Outputs:
-    DistributionDomainName:
-        Description: CloudFront Distribution Domain Name
-        Value: !GetAtt ContentDistribution.DomainName
-    DistributionId:
-        Description: CloudFront Distribution ID
-        Value: !Ref ContentDistribution
+  DistributionDomainName:
+    Description: CloudFront Distribution Domain Name
+    Value: !GetAtt ContentDistribution.DomainName
+  DistributionId:
+    Description: CloudFront Distribution ID
+    Value: !Ref ContentDistribution
