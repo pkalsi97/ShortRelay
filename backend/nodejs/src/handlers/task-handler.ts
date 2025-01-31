@@ -1,84 +1,62 @@
-import { ECSClient, RunTaskCommand } from '@aws-sdk/client-ecs';
-import { SQSEvent } from 'aws-lambda';
+import { SQSEvent, SQSBatchResponse, SQSBatchItemFailure } from 'aws-lambda';
 
+import { Progress, ProcessingStage, MetadataService } from '../services/data/metadata-service';
+import { EcsConfig, WorkerService } from '../services/workers-service';
+import { DbConfig } from '../types/db.types';
 import { Task } from '../types/task.type';
+import { exceptionHandlerFunction } from '../utils/error-handling';
+import { KeyOwner } from '../utils/key-service';
 
-const ecsClient = new ECSClient( { region: process.env.AWS_DEFAULT_REGION! } );
+// init
+const dbConfig: DbConfig = {
+    table: process.env.METADATASTORAGE_TABLE_NAME!,
+    region: process.env.AWS_DEFAULT_REGION!,
+};
 
-const config = {
+const ecsConfig:  EcsConfig = {
     region: process.env.AWS_DEFAULT_REGION!,
     cluster: process.env.ECS_CLUSTER!,
     taskDefinition: process.env.PROCESSOR_TASK_DEFINITION!,
     subnets: process.env.SUBNET_IDS!.split(','),
     securityGroups: [process.env.SECURITY_GROUP_ID!],
+    taskLimit: parseInt(process.env.FARGATE_TASK_LIMIT!, 10 ),
 };
-// use updated at
 
-export const taskHandler = async (event: SQSEvent): Promise<void> => {
+MetadataService.initialize(dbConfig);
+WorkerService.initialize(ecsConfig);
+
+export const taskHandler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
+    const batchItemFailures: SQSBatchItemFailure[] = [];
     for (const record of event.Records) {
+        const task: Task = JSON.parse(record.body);
+        const owner: KeyOwner = { userId: task.userId, assetId: task.assetId };
+
         try {
-            const task: Task = JSON.parse(record.body);
+            const canJobBeAssignedResult = await WorkerService.canJobBeAssigned();
 
-            const command = new RunTaskCommand({
-                cluster: config.cluster,
-                taskDefinition: `${config.taskDefinition}`,
-                capacityProviderStrategy: [
-                    {
-                        capacityProvider: 'FARGATE',
-                        weight: 1,
-                    },
-                ],
-                networkConfiguration: {
-                    awsvpcConfiguration: {
-                        subnets: config.subnets,
-                        securityGroups: config.securityGroups,
-                        assignPublicIp: 'ENABLED',
-                    },
-                },
-                overrides: {
-                    containerOverrides: [
-                        {
-                            name: 'processor',
-                            environment: [
-                                {
-                                    name: 'TASK_ID',
-                                    value: task.taskId,
-                                },
-                                {
-                                    name: 'USER_ID',
-                                    value: task.userId,
-                                },
-                                {
-                                    name: 'ASSET_ID',
-                                    value: task.assetId,
-                                },
-                                {
-                                    name: 'INPUT_KEY',
-                                    value: task.inputKey,
-                                },
-                                {
-                                    name: 'OUTPUT_KEY',
-                                    value: task.outputKey,
-                                },
-                            ],
-                        },
-                    ],
-                },
-            });
-
-            const response = await ecsClient.send(command);
-            console.warn(response.failures);
+            if (canJobBeAssignedResult){
+                const assignJobResult = await WorkerService.assignJob(task);
+                if (assignJobResult){
+                    await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.COMPLETED);
+                    await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'endTime', new Date().toISOString());
+                } else {
+                    await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.HOLD);
+                }
+            } else {
+                await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.HOLD);
+            }
 
         } catch (error) {
-            console.error('Error processing task:', error);
-            throw error;
+            const errorResponse = exceptionHandlerFunction(error);
+            batchItemFailures.push({
+                itemIdentifier: record.messageId,
+            });
+            await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.HOLD);
+            await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'error', errorResponse.message);
         }
     }
+    return { batchItemFailures };
 };
 
-// Multiple AZs
-// Multiple subnets
-// Both FARGATE and FARGATE_SPOT providers
-// instance limit
-// dql
-// auto scaling
+// use updatedAt
+// need to ensure if task is not assigned its dealt well.
