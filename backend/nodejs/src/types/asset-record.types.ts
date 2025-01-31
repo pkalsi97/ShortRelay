@@ -22,7 +22,7 @@ export const createInitialRecord = (userId: string, assetId: string): AssetRecor
     createdAt: { S: new Date().toISOString() },
     updatedAt: { S: new Date().toISOString() },
     stage: { S: 'N.A' },
-    totalFiles: { N: '0' },
+    totalFiles: { S: '0' },
     hasCriticalFailure: { BOOL: false },
     metadata: {
         M: {
@@ -78,9 +78,6 @@ export const createInitialRecord = (userId: string, assetId: string): AssetRecor
                 M: { },
             },
             completion: {
-                M: { },
-            },
-            distribution: {
                 M: { },
             },
         },
