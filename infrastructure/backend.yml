@@ -79,6 +79,9 @@ Parameters:
   FargateTaskLimit:
     Type: String
     Description: Maximum number of concurrent fargate task
+  CompletionTrigger:
+    Type: String
+    Description: S3 event filter used in CompletionQueue Notifications sent by S3
   Environment:
     Type: String
     Description: Deployment Environment
@@ -421,7 +424,7 @@ Resources:
             - Effect: Allow
               Action:
                 - ecs:ListTasks
-              Resource: '*' 
+              Resource: '*'
             - Effect: Allow
               Action:
                 - ecs:RunTask
@@ -467,6 +470,32 @@ Resources:
         - AWSXrayWriteOnlyAccess
         - DynamoDBCrudPolicy:
             TableName: !Ref MetadataStorage
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:GetObjectAcl
+                - s3:GetObjectLegalHold
+                - s3:GetObjectRetention
+                - s3:GetObjectTorrent
+                - s3:GetObjectVersion
+                - s3:GetObjectVersionAcl
+                - s3:GetObjectVersionForReplication
+                - s3:GetObjectVersionTorrent
+                - s3:ListBucket
+                - s3:ListBucketMultipartUploads
+                - s3:ListBucketVersions
+                - s3:ListMultipartUploadParts
+                - s3:AbortMultipartUpload
+                - s3:DeleteObject
+                - s3:DeleteObjectVersion
+                - s3:PutObject
+                - s3:PutObjectLegalHold
+                - s3:PutObjectRetention
+                - s3:RestoreObject
+              Resource:
+                - !Sub arn:${AWS::Partition}:s3:::${ContentStorage}
+                - !Sub arn:${AWS::Partition}:s3:::${ContentStorage}/*
       Events:
         CompletionQueue:
           Type: SQS
@@ -478,6 +507,8 @@ Resources:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+          CONTENTSTORAGE_BUCKET_NAME: !Ref ContentStorage
+          CONTENTSTORAGE_BUCKET_ARN: !GetAtt ContentStorage.Arn
   ValidationHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -617,6 +648,11 @@ Resources:
       NotificationConfiguration:
         QueueConfigurations:
           - Event: s3:ObjectCreated:Post
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: !Ref CompletionTrigger
             Queue: !GetAtt CompletionQueue.Arn
     DependsOn:
       - ContentStorageToCompletionQueuePermission
@@ -637,6 +673,12 @@ Resources:
             Condition:
               Bool:
                 aws:SecureTransport: 'false'
+          - Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity
+                ${CloudFrontOriginAccessIdentity}
+            Action: s3:GetObject
+            Resource: !Sub ${ContentStorage.Arn}/*
   # Metadata storage
   MetadataStorage:
     Type: AWS::DynamoDB::Table
@@ -908,7 +950,6 @@ Resources:
               - ecr:InitiateLayerUpload
               - ecr:UploadLayerPart
               - ecr:CompleteLayerUpload
-
   ProcessorTaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -1030,6 +1071,8 @@ Resources:
               Value: !Ref MetadataStorage
             - Name: FOOTAGE_DIR
               Value: /tmp/footage
+            - Name: COMPLETION_TRIGGER
+              Value: !Ref CompletionTrigger
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1044,5 +1087,62 @@ Resources:
         - Key: Project
           Value: !Ref AppId
   # -----------------------------------------------------------------------------------------------------------------------
-  # Metadata
+  # CloudFront
   # -----------------------------------------------------------------------------------------------------------------------
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub OAI for ${AWS::StackName}
+
+  ContentDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - DomainName: !GetAtt ContentStorage.RegionalDomainName
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: whitelist
+            Locations:
+              - IN
+              - US
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf
+  CORSPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub ${AWS::StackName}-CORS-Policy
+        CorsConfig:
+          AccessControlAllowOrigins:
+            Items:
+              - !Ref AllowedOrigin
+          AccessControlAllowMethods:
+            Items:
+              - GET
+              - HEAD
+              - OPTIONS
+          AccessControlAllowHeaders:
+            Items:
+              - '*'
+          AccessControlExposeHeaders:
+            Items:
+              - '*'
+          AccessControlMaxAgeSec: 600
+          OriginOverride: false
