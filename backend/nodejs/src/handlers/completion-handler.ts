@@ -64,7 +64,6 @@ function generateAssetUrls(userId: string, assetId: string): AssetUrls {
 }
 
 export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> => {
-    console.warn(messages);
     const batchItemFailures: SQSBatchItemFailure[] = [];
     const failedS3Events: FailedEvent[] = [];
     await Promise.all(
