@@ -641,8 +641,7 @@ Resources:
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
-              SSEAlgorithm: aws:kms
-              KMSMasterKeyID: alias/aws/s3
+              SSEAlgorithm: AES256
       PublicAccessBlockConfiguration:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
@@ -674,12 +673,15 @@ Resources:
             Condition:
               Bool:
                 aws:SecureTransport: 'false'
-          - Effect: Allow
+          - Sid: AllowCloudFrontServicePrincipal
+            Effect: Allow
             Principal:
-              AWS: !Sub arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity
-                ${CloudFrontOriginAccessIdentity}
+              Service: cloudfront.amazonaws.com
             Action: s3:GetObject
             Resource: !Sub ${ContentStorage.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${ContentDistribution}
   # Metadata storage
   MetadataStorage:
     Type: AWS::DynamoDB::Table
@@ -1090,13 +1092,16 @@ Resources:
   # -----------------------------------------------------------------------------------------------------------------------
   # CloudFront
   # -----------------------------------------------------------------------------------------------------------------------
-  CloudFrontOriginAccessIdentity:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+CloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
     Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub OAI for ${AWS::StackName}
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-OAC
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
 
-  ContentDistribution:
+ContentDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
@@ -1104,8 +1109,10 @@ Resources:
         Origins:
           - DomainName: !GetAtt ContentStorage.RegionalDomainName
             Id: S3Origin
-            S3OriginConfig:
-              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}
+            OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+            OriginShield:
+              Enabled: true
+              OriginShieldRegion: ap-south-1
         Restrictions:
           GeoRestriction:
             RestrictionType: whitelist
@@ -1123,20 +1130,20 @@ Resources:
             - OPTIONS
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
-          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
-          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # Managed-CORS-S3Origin
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf
           ResponseHeadersPolicyId: !Ref CORSPolicy
         IPV6Enabled: true
         HttpVersion: http2
-        PriceClass: PriceClass_200 # North America, Europe, Asia, Middle East, and Africa
+        PriceClass: PriceClass_200
 
-  CORSPolicy:
+CORSPolicy:
     Type: AWS::CloudFront::ResponseHeadersPolicy
     Properties:
       ResponseHeadersPolicyConfig:
         Name: !Sub ${AWS::StackName}-CORS-Policy
         CorsConfig:
-          AccessControlAllowCredentials: false # Added required field
+          AccessControlAllowCredentials: false
           AccessControlAllowOrigins:
             Items:
               - !Ref AllowedOrigin
@@ -1154,19 +1161,19 @@ Resources:
           AccessControlMaxAgeSec: 600
           OriginOverride: false
         SecurityHeadersConfig:
-          # Added security headers
           ContentSecurityPolicy:
-            ContentSecurityPolicy: default-src 'none'; img-src 'self'; media-src 'self'
+            ContentSecurityPolicy: "default-src 'none'; img-src 'self'; media-src 'self'"
             Override: true
           StrictTransportSecurity:
             AccessControlMaxAgeSec: 31536000
             IncludeSubdomains: true
             Preload: true
             Override: true
+
 Outputs:
-  DistributionDomainName:
-    Description: CloudFront Distribution Domain Name
-    Value: !GetAtt ContentDistribution.DomainName
-  DistributionId:
-    Description: CloudFront Distribution ID
-    Value: !Ref ContentDistribution
+    DistributionDomainName:
+        Description: CloudFront Distribution Domain Name
+        Value: !GetAtt ContentDistribution.DomainName
+    DistributionId:
+        Description: CloudFront Distribution ID
+        Value: !Ref ContentDistribution
