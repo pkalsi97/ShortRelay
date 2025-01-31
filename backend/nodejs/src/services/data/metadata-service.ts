@@ -14,7 +14,8 @@ export enum MetadataPath {
 export enum Progress {
     PENDING = 'PENDING',
     COMPLETED = 'COMPLETED',
-    FAILED = 'FAILED'
+    FAILED = 'FAILED',
+    HOLD = 'HOLD',
 }
 
 export enum ProcessingStage {
@@ -167,8 +168,7 @@ const createUpdateCommand = (path: MetadataPath, data: any): UpdateCommandParams
     };
 };
 
-const updateMetadata = async (
-    owner: KeyOwner, path: MetadataPath, data: any ): Promise<boolean> => {
+const updateMetadata = async ( owner: KeyOwner, path: MetadataPath, data: any ): Promise<boolean> => {
     const { UpdateExpression, ExpressionAttributeNames, ExpressionAttributeValues } = createUpdateCommand(path, data);
     const userId = owner.userId;
     const assetId = owner.assetId;
@@ -205,6 +205,36 @@ const getCreatedTime = async ( owner: KeyOwner ): Promise<string> => {
     return response.Item?.createdAt?.S ?? new Date().toISOString();
 };
 
+const updateProgressField = async (
+    owner: KeyOwner,
+    stage: string,
+    field: 'status' | 'startTime' | 'endTime' | 'error',
+    value: string,
+): Promise<boolean> => {
+    const command = new UpdateItemCommand({
+        TableName: dbConfig.table,
+        Key: {
+            userId: { S: owner.userId },
+            assetId: { S: owner.assetId },
+        },
+        UpdateExpression: `
+            SET progress.#stage.#field = :value,
+                updatedAt = :updateTime
+        `,
+        ExpressionAttributeNames: {
+            '#stage': stage,
+            '#field': field,
+        },
+        ExpressionAttributeValues: {
+            ':value': { S: value },
+            ':updateTime': { S: new Date().toISOString() },
+        },
+    });
+
+    const response = await dbClient.send(command);
+    return response.$metadata.httpStatusCode === 200;
+};
+
 /* eslint-enable @typescript-eslint/no-explicit-any */
 export const MetadataService = {
     initialize,
@@ -213,4 +243,5 @@ export const MetadataService = {
     markCriticalFailure,
     updateMetadata,
     getCreatedTime,
+    updateProgressField,
 };
