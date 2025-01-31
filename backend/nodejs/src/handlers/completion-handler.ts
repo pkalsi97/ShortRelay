@@ -27,6 +27,7 @@ ObjectService.initialize(objectConfig);
 MetadataService.initialize(dbConfig);
 
 export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> => {
+    console.warn(messages);
     const batchItemFailures: SQSBatchItemFailure[] = [];
     const failedS3Events: FailedEvent[] = [];
     await Promise.all(
