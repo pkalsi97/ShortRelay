@@ -36,17 +36,17 @@ type Config struct {
 func loadConfig() (*Config, error) {
     config := &Config{}
     envVars := map[string]*string{
-        "TASK_ID":          &config.TaskID,
-        "USER_ID":          &config.UserID,
-        "ASSET_ID":         &config.AssetID,
-        "FOOTAGE_DIR":      &config.FootageDir,
-        "AWS_REGION":       &config.AWSRegion,
-        "TRANSPORT_BUCKET": &config.TransportBucket,
-        "CONTENT_BUCKET":   &config.ContentBucket,
-        "METADATA_TABLE":   &config.MetadataTable,
-        "INPUT_KEY":        &config.InputKey,
-        "OUTPUT_KEY":       &config.OutputKey,
-        "CompletionTrigger":&config.CompletionTrigger,
+        "TASK_ID":              &config.TaskID,
+        "USER_ID":              &config.UserID,
+        "ASSET_ID":             &config.AssetID,
+        "FOOTAGE_DIR":          &config.FootageDir,
+        "AWS_REGION":           &config.AWSRegion,
+        "TRANSPORT_BUCKET":     &config.TransportBucket,
+        "CONTENT_BUCKET":       &config.ContentBucket,
+        "METADATA_TABLE":       &config.MetadataTable,
+        "INPUT_KEY":            &config.InputKey,
+        "OUTPUT_KEY":           &config.OutputKey,
+        "COMPLETION_TRIGGER":   &config.CompletionTrigger,
     }
 
     missingVars := []string{}
