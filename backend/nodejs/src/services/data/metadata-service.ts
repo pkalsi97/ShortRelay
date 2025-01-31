@@ -18,6 +18,10 @@ export enum Progress {
     HOLD = 'HOLD',
 }
 
+export enum Field {
+
+}
+
 export enum ProcessingStage {
     Upload = 'upload',
     Validation = 'validation',
@@ -32,7 +36,6 @@ export enum ProcessingStage {
     UploadTranscodedFootage = 'uploadTranscodedFootage',
     PostProcessingValidation = 'postProcessingValidation',
     Completion = 'completion',
-    Distribution = 'distribution'
 }
 
 let dbConfig:DbConfig;
@@ -205,6 +208,23 @@ const getCreatedTime = async ( owner: KeyOwner ): Promise<string> => {
     return response.Item?.createdAt?.S ?? new Date().toISOString();
 };
 
+const getFileCount = async ( owner: KeyOwner ): Promise<string> => {
+    const userId = owner.userId;
+    const assetId = owner.assetId;
+
+    const command = new GetItemCommand({
+        TableName: dbConfig.table,
+        Key: {
+            userId: { S: userId },
+            assetId: { S: assetId },
+        },
+        ProjectionExpression: 'totalFiles',
+    });
+
+    const response = await dbClient.send(command);
+    return response.Item?.totalFiles?.S ?? '0';
+};
+
 const updateProgressField = async (
     owner: KeyOwner,
     stage: string,
@@ -244,4 +264,5 @@ export const MetadataService = {
     updateMetadata,
     getCreatedTime,
     updateProgressField,
+    getFileCount,
 };
