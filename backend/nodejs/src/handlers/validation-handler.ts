@@ -125,6 +125,8 @@ export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                             true,
                         );
                     }
+                    await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'startTime', new Date().toISOString());
+                    await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.PENDING);
 
                 } else {
                     await MetadataService.updateProgress(
