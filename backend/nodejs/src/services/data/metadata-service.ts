@@ -9,6 +9,7 @@ export enum MetadataPath {
     STREAM = 'validation.stream',
     TECHNICAL = 'metadata.technical',
     QUALITY = 'metadata.quality',
+    DISTRIBUTION = 'metadata.distribution'
 }
 
 export enum Progress {
@@ -135,6 +136,7 @@ const UPDATE_PATHS: Record<MetadataPath, string[]> = {
     [MetadataPath.STREAM]: ['metadata', 'validation', 'stream'],
     [MetadataPath.TECHNICAL]: ['metadata', 'technical'],
     [MetadataPath.QUALITY]: ['metadata', 'quality'],
+    [MetadataPath.DISTRIBUTION]:['metadata','distribution'],
 };
 
 const convertToMapAttribute = (data: any): Record<string, any> => {

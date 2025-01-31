@@ -1,6 +1,6 @@
 import { SQSEvent, SQSBatchResponse, SQSBatchItemFailure, S3Event } from 'aws-lambda';
 
-import { Progress, ProcessingStage, MetadataService } from '../services/data/metadata-service';
+import { MetadataPath, Progress, ProcessingStage, MetadataService } from '../services/data/metadata-service';
 import { ObjectServiceConfig, ObjectService } from '../services/data/object-service';
 import { DbConfig } from '../types/db.types';
 import { exceptionHandlerFunction } from '../utils/error-handling';
@@ -25,6 +25,43 @@ const objectConfig: ObjectServiceConfig = {
 
 ObjectService.initialize(objectConfig);
 MetadataService.initialize(dbConfig);
+
+interface AssetUrls {
+    streaming: {
+        hls: string;
+        iframe: string;
+        audio: string;
+    };
+    downloads: {
+        high: string;
+        medium: string;
+        low: string;
+        mobile: string;
+        audio: string;
+    };
+    thumbnail: string;
+}
+
+function generateAssetUrls(userId: string, assetId: string): AssetUrls {
+    const CLOUDFRONT_DOMAIN = process.env.CDN_DOMAIN;
+    const basePath = `${userId}/${assetId}`;
+
+    return {
+        streaming: {
+            hls: `https://${CLOUDFRONT_DOMAIN}/${basePath}/hls/master.m3u8`,
+            iframe: `https://${CLOUDFRONT_DOMAIN}/${basePath}/hls/master_iframe.m3u8`,
+            audio: `https://${CLOUDFRONT_DOMAIN}/${basePath}/hls/audio/stream.m3u8`
+        },
+        downloads: {
+            high: `https://${CLOUDFRONT_DOMAIN}/${basePath}/mp4/1080p.mp4`,
+            medium: `https://${CLOUDFRONT_DOMAIN}/${basePath}/mp4/720p.mp4`,
+            low: `https://${CLOUDFRONT_DOMAIN}/${basePath}/mp4/480p.mp4`,
+            mobile: `https://${CLOUDFRONT_DOMAIN}/${basePath}/mp4/360p.mp4`,
+            audio: `https://${CLOUDFRONT_DOMAIN}/${basePath}/mp4/audio.m4a`
+        },
+        thumbnail: `https://${CLOUDFRONT_DOMAIN}/${basePath}/assets/thumbnail.png`
+    };
+}
 
 export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> => {
     console.warn(messages);
@@ -57,6 +94,37 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                                         error: 'N.A',
                                     },
                                 );
+
+                                const completionStart = new Date().toISOString();
+                                const assetUrls = generateAssetUrls(userId,assetId);
+                                const result = await MetadataService.updateMetadata(
+                                    owner,
+                                    MetadataPath.DISTRIBUTION,
+                                    assetUrls,
+                                );
+                                if (result) {
+                                    await MetadataService.updateProgress(
+                                        owner,
+                                        ProcessingStage.Completion,
+                                        'Finished',
+                                        {
+                                            status: Progress.COMPLETED,
+                                            startTime: completionStart,
+                                            error: 'N.A',
+                                        },
+                                    );
+                                } else {
+                                    await MetadataService.updateProgress(
+                                        owner,
+                                        ProcessingStage.Completion,
+                                        'Finished',
+                                        {
+                                            status: Progress.FAILED,
+                                            startTime: completionStart,
+                                            error: 'N.A',
+                                        },
+                                    );
+                                }
                             } else {
                                 await MetadataService.updateProgress(
                                     owner,
@@ -68,6 +136,7 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                                         error: 'Count Dont Match',
                                     },
                                 );
+                                await MetadataService.markCriticalFailure(owner, true);
                             }
                         } catch (error){
                             const errorResponse =exceptionHandlerFunction(error);

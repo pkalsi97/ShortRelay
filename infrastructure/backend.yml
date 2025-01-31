@@ -509,6 +509,7 @@ Resources:
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
           CONTENTSTORAGE_BUCKET_NAME: !Ref ContentStorage
           CONTENTSTORAGE_BUCKET_ARN: !GetAtt ContentStorage.Arn
+          CDN_DOMAIN: !GetAtt ContentDistribution.DomainName
   ValidationHandler:
     Type: AWS::Serverless::Function
     Properties:

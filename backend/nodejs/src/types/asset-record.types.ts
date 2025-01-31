@@ -34,6 +34,7 @@ export const createInitialRecord = (userId: string, assetId: string): AssetRecor
             },
             technical: { M: {} },
             quality: { M: {} },
+            distribution: { M: {} },
         },
     },
     progress: {
