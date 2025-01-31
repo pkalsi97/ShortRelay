@@ -1111,6 +1111,9 @@ Resources:
             Id: S3Origin
             S3OriginConfig: {}
             OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+            OriginShield:
+              Enabled: true
+              OriginShieldRegion: ap-south-1
         Restrictions:
           GeoRestriction:
             RestrictionType: whitelist
@@ -1168,10 +1171,10 @@ Resources:
             Preload: true
             Override: true
 
-  Outputs:
-    DistributionDomainName:
-      Description: CloudFront Distribution Domain Name
-      Value: !GetAtt ContentDistribution.DomainName
-    DistributionId:
-      Description: CloudFront Distribution ID
-      Value: !Ref ContentDistribution
+Outputs:
+  DistributionDomainName:
+    Description: CloudFront Distribution Domain Name
+    Value: !GetAtt ContentDistribution.DomainName
+  DistributionId:
+    Description: CloudFront Distribution ID
+    Value: !Ref ContentDistribution
