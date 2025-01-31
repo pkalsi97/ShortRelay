@@ -1122,14 +1122,20 @@ Resources:
             - OPTIONS
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
-          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
-          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # Managed-CORS-S3Origin
+          ResponseHeadersPolicyId: !Ref CORSPolicy
+        IPV6Enabled: true
+        HttpVersion: http2
+        PriceClass: PriceClass_200 # North America, Europe, Asia, Middle East, and Africa
+
   CORSPolicy:
     Type: AWS::CloudFront::ResponseHeadersPolicy
     Properties:
       ResponseHeadersPolicyConfig:
         Name: !Sub ${AWS::StackName}-CORS-Policy
         CorsConfig:
+          AccessControlAllowCredentials: false # Added required field
           AccessControlAllowOrigins:
             Items:
               - !Ref AllowedOrigin
@@ -1146,3 +1152,20 @@ Resources:
               - '*'
           AccessControlMaxAgeSec: 600
           OriginOverride: false
+        SecurityHeadersConfig:
+          # Added security headers
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: default-src 'none'; img-src 'self'; media-src 'self'
+            Override: true
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Preload: true
+            Override: true
+Outputs:
+  DistributionDomainName:
+    Description: CloudFront Distribution Domain Name
+    Value: !GetAtt ContentDistribution.DomainName
+  DistributionId:
+    Description: CloudFront Distribution ID
+    Value: !Ref ContentDistribution
