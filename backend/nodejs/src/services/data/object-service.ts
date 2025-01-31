@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 
-import { S3Client, GetObjectCommand, DeleteObjectCommand, GetObjectCommandOutput } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, DeleteObjectCommand, GetObjectCommandOutput, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 
 export interface ObjectServiceConfig {
@@ -49,10 +49,28 @@ const deleteObject = async (key:string):Promise<boolean> => {
     return response.$metadata.httpStatusCode === 204;
 };
 
+const getFileCount = async (prefix:string): Promise<number> =>{
+    const command = new ListObjectsV2Command({
+        Bucket: objectServiceConfig.bucket,
+        Prefix: prefix
+    });
+
+    let fileCount = 0;
+    let response;
+
+    do {
+        response = await s3Client.send(command);
+        fileCount += response.Contents?.length || 0;
+        command.input.ContinuationToken = response.NextContinuationToken;
+    } while (response.IsTruncated);
+
+    return fileCount;
+}
+
 export const ObjectService = {
     initialize,
     getObject,
     uploadObject,
     deleteObject,
+    getFileCount,
 };
-
