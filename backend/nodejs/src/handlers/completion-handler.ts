@@ -1,5 +1,103 @@
+import { SQSEvent, SQSBatchResponse, SQSBatchItemFailure, S3Event } from 'aws-lambda';
 
-export const completionHandler = async (event:string): Promise<boolean> => {
-    console.warn(event);
-    return true;
+import { Progress, ProcessingStage, MetadataService } from '../services/data/metadata-service';
+import { ObjectServiceConfig, ObjectService } from '../services/data/object-service';
+import { DbConfig } from '../types/db.types';
+import { exceptionHandlerFunction } from '../utils/error-handling';
+import { KeyOwner, KeyService } from '../utils/key-service';
+
+interface FailedEvent {
+    bucket: string;
+    key: string;
+}
+
+// Initialize
+
+const dbConfig: DbConfig = {
+    table: process.env.METADATASTORAGE_TABLE_NAME!,
+    region: process.env.AWS_DEFAULT_REGION!,
 };
+
+const objectConfig: ObjectServiceConfig = {
+    region: process.env.AWS_DEFAULT_REGION!,
+    bucket: process.env.CONTENTSTORAGE_BUCKET_NAME!,
+};
+
+ObjectService.initialize(objectConfig);
+MetadataService.initialize(dbConfig);
+
+export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> => {
+    const batchItemFailures: SQSBatchItemFailure[] = [];
+    const failedS3Events: FailedEvent[] = [];
+    await Promise.all(
+        messages.Records.map(async (sqsRecord) => {
+            try {
+                const s3Events = JSON.parse(sqsRecord.body) as S3Event;
+                await Promise.all(
+                    s3Events.Records.map(async (s3Event) => {
+                        const key:string = s3Event.s3.object.key;
+                        const bucket:string = s3Event.s3.bucket.name;
+                        const owner: KeyOwner = KeyService.getOwner(key);
+                        const userId: string = owner.userId;
+                        const assetId: string = owner.assetId;
+                        const postProcessingValidationStart = new Date().toISOString();
+                        try {
+                            const dbCount:number = parseInt( await MetadataService.getFileCount(owner), 10 );
+                            const s3Count:number = await ObjectService.getFileCount(`${userId}/${assetId}`)-1;
+
+                            if (dbCount == s3Count ){
+                                await MetadataService.updateProgress(
+                                    owner,
+                                    ProcessingStage.PostProcessingValidation,
+                                    ProcessingStage.Completion,
+                                    {
+                                        status: Progress.COMPLETED,
+                                        startTime: postProcessingValidationStart,
+                                        error: 'N.A',
+                                    },
+                                );
+                            } else {
+                                await MetadataService.updateProgress(
+                                    owner,
+                                    ProcessingStage.PostProcessingValidation,
+                                    ProcessingStage.Completion,
+                                    {
+                                        status: Progress.HOLD,
+                                        startTime: postProcessingValidationStart,
+                                        error: 'Count Dont Match',
+                                    },
+                                );
+                            }
+                        } catch (error){
+                            const errorResponse =exceptionHandlerFunction(error);
+                            await MetadataService.updateProgress(
+                                owner,
+                                ProcessingStage.PostProcessingValidation,
+                                ProcessingStage.Completion,
+                                {
+                                    status: Progress.FAILED,
+                                    startTime: postProcessingValidationStart,
+                                    error: errorResponse.message,
+                                },
+                            );
+                            await MetadataService.markCriticalFailure(owner, true);
+                            failedS3Events.push({
+                                key,
+                                bucket,
+                            });
+                        }
+                    }),
+                );
+            } catch (error){
+                exceptionHandlerFunction(error);
+                batchItemFailures.push({
+                    itemIdentifier: sqsRecord.messageId,
+                });
+            }
+        }),
+    );
+
+    return { batchItemFailures };
+};
+
+// Pending -> Where to send Failed s3 events, how can they be managed ?
