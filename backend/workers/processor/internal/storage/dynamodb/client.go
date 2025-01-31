@@ -110,7 +110,7 @@ func (p *ProgressUpdater) UpdateFileCount(ctx context.Context, count int) error 
             "#totalFiles": StateTotalFiles,
         },
         ExpressionAttributeValues: map[string]types.AttributeValue{
-            ":count": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", count)},
+            ":count": &types.AttributeValueMemberS{Value: fmt.Sprintf("%d", count)},
             ":time":  &types.AttributeValueMemberS{Value: time.Now().UTC().Format(TimeFormat)},
         },
     }

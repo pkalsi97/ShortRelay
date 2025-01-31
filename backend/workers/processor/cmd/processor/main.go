@@ -20,16 +20,17 @@ type StopWatch struct {
 }
 
 type Config struct {
-    TaskID          string
-    UserID          string
-    AssetID         string
-    FootageDir      string
-    AWSRegion       string
-    TransportBucket string
-    ContentBucket   string
-    MetadataTable   string
-    InputKey        string
-    OutputKey       string
+    TaskID              string
+    UserID              string
+    AssetID             string
+    FootageDir          string
+    AWSRegion           string
+    TransportBucket     string
+    ContentBucket       string
+    MetadataTable       string
+    InputKey            string
+    OutputKey           string
+    CompletionTrigger   string
 }
 
 func loadConfig() (*Config, error) {
@@ -45,6 +46,7 @@ func loadConfig() (*Config, error) {
         "METADATA_TABLE":   &config.MetadataTable,
         "INPUT_KEY":        &config.InputKey,
         "OUTPUT_KEY":       &config.OutputKey,
+        "CompletionTrigger":&config.CompletionTrigger,
     }
 
     missingVars := []string{}
@@ -101,6 +103,22 @@ func updateState(ctx context.Context, updater *db.ProgressUpdater, currentStage,
     }
 }
 
+func createCompletionJSON(userId, assetId string, fileCount int) []byte {
+    completionJSON := fmt.Sprintf(`{
+    "userId": "%s",
+    "assetId": "%s",
+    "timestamp": "%s",
+    "fileCount": %d,
+    "status": "complete"
+}`,
+        userId,
+        assetId,
+        time.Now().UTC().Format(time.RFC3339),
+        fileCount,
+    )
+    return []byte(completionJSON)
+}
+
 func main() {
     var workDir string
 
@@ -137,13 +155,13 @@ func main() {
 
     // Step 2: Download
     sw = NewStopWatch("Download")
-    client, err := s3.NewS3Client(config.AWSRegion, config.TransportBucket)
+    s3client, err := s3.NewS3Client(config.AWSRegion, config.TransportBucket)
     if err != nil {
         log.Printf("S3 client creation failed: %v", err)
         updateState(ctx, updater, db.StateDownload, db.StateWriteToStorage,sw ,err)
         os.Exit(1)
     }
-    downloadedData, err := client.DownloadFile(config.InputKey)
+    downloadedData, err := s3client.DownloadFile(config.InputKey)
     if err != nil {
         log.Printf("Download failed: %v", err)
         updateState(ctx, updater, db.StateDownload, db.StateWriteToStorage,sw ,err)
@@ -265,6 +283,17 @@ func main() {
     updateState(ctx, updater, db.StateUploadTranscodedFootage, db.StatePostProcessingValidation,sw ,err)
     if err := updater.UpdateFileCount(ctx, fileCount); err != nil {
         log.Printf("Failed to update file count: %v", err)
+    }
+    sw.Stop()
+
+    // Step 10: Upload Completion.json
+    sw = NewStopWatch("UploadCompletion")
+    completionKey := filepath.Join(config.UserID, config.AssetID, config.CompletionTrigger)
+    completionData := createCompletionJSON(config.UserID, config.AssetID, fileCount)
+
+    if err := s3ContentClient.UploadFile(completionKey,completionData,"application/json"); err != nil {
+        log.Printf("Failed to upload completion marker: %v", err)
+        os.Exit(1)
     }
     sw.Stop()
 }
