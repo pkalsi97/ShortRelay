@@ -76,6 +76,9 @@ Parameters:
   DefaultSecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
     Description: Default Security Group ID for ECS Tasks
+  FargateTaskLimit:
+    Type: String
+    Description: Maximum number of concurrent fargate task
   Environment:
     Type: String
     Description: Deployment Environment
@@ -443,6 +446,7 @@ Resources:
           VPC_ID: !Ref DefaultVpcId
           SECURITY_GROUP_ID: !Ref DefaultSecurityGroupId
           SUBNET_IDS: !Ref DefaultSubnetIds
+          FARGATE_TASK_LIMIT: !Ref FargateTaskLimit
   CompletionHandler:
     Type: AWS::Serverless::Function
     Properties:
