@@ -420,10 +420,13 @@ Resources:
         - Statement:
             - Effect: Allow
               Action:
+                - ecs:ListTasks
+              Resource: '*' 
+            - Effect: Allow
+              Action:
                 - ecs:RunTask
                 - ecs:StopTask
                 - ecs:DescribeTasks
-                - ecs:ListTasks
                 - iam:PassRole
               Resource:
                 - !Ref ProcessorTaskDefinition
