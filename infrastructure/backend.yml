@@ -647,7 +647,7 @@ Resources:
         RestrictPublicBuckets: true
       NotificationConfiguration:
         QueueConfigurations:
-          - Event: s3:ObjectCreated:Post
+          - Event: s3:ObjectCreated:Put
             Filter:
               S3Key:
                 Rules:
