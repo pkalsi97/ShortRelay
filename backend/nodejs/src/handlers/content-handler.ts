@@ -38,10 +38,16 @@ const getAllAssets = async(request:Request): Promise<Response> => {
         throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
     }
 
+    const token = request.headers?.['x-access-token'];
+    const accessToken = token?.slice(7)!;
+    const userId = await IdentityService.getUser(accessToken);
+
+    const records = await MetadataService.getAllAssets(userId);
+
     return {
         success: true,
         message: 'All Assets!',
-        data: {},
+        data: records,
     };
 };
 
@@ -50,24 +56,26 @@ const getAsset = async(request:Request): Promise<Response> => {
         ValidationField.RequestHeaders,
         ValidationField.AccessToken,
     ]);
-
     if (!validationResult.success){
         throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
     }
 
     const assetId = request.parameters?.assetId;
-
     if (!assetId) {
         throw new CustomError(
             ErrorName.ValidationError, 'Asset ID is required', 400, Fault.CLIENT, true);
     }
 
-    console.warn(assetId);
+    const token = request.headers?.['x-access-token'];
+    const accessToken = token?.slice(7)!;
+    const userId = await IdentityService.getUser(accessToken);
+
+    const record = await MetadataService.getAsset(userId, assetId);
 
     return {
         success: true,
         message: 'particular Asset',
-        data: {},
+        data: record,
     };
 };
 
