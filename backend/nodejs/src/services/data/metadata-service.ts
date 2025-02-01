@@ -136,7 +136,7 @@ const UPDATE_PATHS: Record<MetadataPath, string[]> = {
     [MetadataPath.STREAM]: ['metadata', 'validation', 'stream'],
     [MetadataPath.TECHNICAL]: ['metadata', 'technical'],
     [MetadataPath.QUALITY]: ['metadata', 'quality'],
-    [MetadataPath.DISTRIBUTION]:['metadata','distribution'],
+    [MetadataPath.DISTRIBUTION]: ['metadata', 'distribution'],
 };
 
 const convertToMapAttribute = (data: any): Record<string, any> => {
