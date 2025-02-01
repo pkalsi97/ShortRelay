@@ -20,10 +20,6 @@ export enum Progress {
     HOLD = 'HOLD',
 }
 
-export enum Field {
-
-}
-
 export enum ProcessingStage {
     Upload = 'upload',
     Validation = 'validation',
