@@ -952,7 +952,7 @@ Resources:
     Properties:
       QueueName: !Sub ${AppId}-ValidationQueue
       MessageRetentionPeriod: 345600
-      VisibilityTimeout: 50
+      VisibilityTimeout: 60
       DelaySeconds: 1
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt ValidationDLQ.Arn
@@ -961,18 +961,22 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       MessageRetentionPeriod: 345600
+      VisibilityTimeout: 60
   UploadDLQ:
     Type: AWS::SQS::Queue
     Properties:
       MessageRetentionPeriod: 345600
+      VisibilityTimeout: 60
   CompletionDLQ:
     Type: AWS::SQS::Queue
     Properties:
       MessageRetentionPeriod: 345600
+      VisibilityTimeout: 60
   ValidationDLQ:
     Type: AWS::SQS::Queue
     Properties:
       MessageRetentionPeriod: 345600
+      VisibilityTimeout: 60
   # -----------------------------------------------------------------------------------------------------------------------
   # NETWORK
   # -----------------------------------------------------------------------------------------------------------------------
