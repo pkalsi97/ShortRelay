@@ -32,7 +32,7 @@ Globals:
     Cors:
       AllowOrigin: !Sub '''${AllowedOrigin}'''
       AllowHeaders: '''Content-Type, Authorization, X-Access-Token'''
-      AllowMethods: '''POST'''
+      AllowMethods: '''OPTIONS,POST,GET'''
       MaxAge: 5
     MethodSettings:
       - ResourcePath: /*
@@ -260,13 +260,16 @@ Resources:
               responses: {}
           /v1/user/assets/{assetId}:
             get:
+              parameters:
+                - name: assetId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
               security:
                 - Cognito-Auth: []
-              x-amazon-apigateway-integration:
-                httpMethod: POST
-                type: aws_proxy
-                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ContentRequestHandler.Arn}/invocations
               responses: {}
+
   # -----------------------------------------------------------------------------------------------------------------------
   # LAMBDA
   # -----------------------------------------------------------------------------------------------------------------------
@@ -617,12 +620,6 @@ Resources:
           Type: Api
           Properties:
             Path: /v1/user/assets/all
-            Method: GET
-            RestApiId: !Ref UserActionsAPIs
-        UserActionsAPIsGETv1userassetsassetId:
-          Type: Api
-          Properties:
-            Path: /v1/user/assets/{assetId}
             Method: GET
             RestApiId: !Ref UserActionsAPIs
   EventDLQHandler:
