@@ -31,7 +31,6 @@ type Config struct {
     InputKey            string
     OutputKey           string
     CompletionTrigger   string
-    EncryptedUID        string
 }
 
 func loadConfig() (*Config, error) {
@@ -48,7 +47,6 @@ func loadConfig() (*Config, error) {
         "INPUT_KEY":            &config.InputKey,
         "OUTPUT_KEY":           &config.OutputKey,
         "COMPLETION_TRIGGER":   &config.CompletionTrigger,
-        "ENCRYPTED_UID":        &config.EncryptedUID,
     }
 
     missingVars := []string{}
@@ -174,7 +172,7 @@ func main() {
 
     // Step 3: Write to temp
     sw = NewStopWatch("Write Temp")
-    workDir = filepath.Join(config.FootageDir, config.EncryptedUID, config.AssetID)
+    workDir = filepath.Join(config.FootageDir, config.UserID, config.AssetID)
     if err := os.MkdirAll(workDir, 0755); err != nil {
         log.Printf("Failed to create working directory: %v", err)
         updateState(ctx, updater, db.StateWriteToStorage, db.StateInitializeProcessor,sw ,err)

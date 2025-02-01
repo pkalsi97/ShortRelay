@@ -43,7 +43,7 @@ const canJobBeAssigned = async ():Promise<boolean> => {
     return false;
 };
 
-const assignJob = async (task: Task, encryptedUID: string): Promise<boolean> => {
+const assignJob = async (task: Task): Promise<boolean> => {
 
     try {
         const command = new RunTaskCommand({
@@ -91,10 +91,6 @@ const assignJob = async (task: Task, encryptedUID: string): Promise<boolean> => 
                             {
                                 name: 'OUTPUT_KEY',
                                 value: task.outputKey,
-                            },
-                            {
-                                name: 'ENCRYPTED_UID',
-                                value: encryptedUID,
                             },
                         ],
                     },

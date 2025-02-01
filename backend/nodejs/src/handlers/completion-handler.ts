@@ -3,7 +3,6 @@ import { SQSEvent, SQSBatchResponse, SQSBatchItemFailure, S3Event } from 'aws-la
 import { MetadataPath, Progress, ProcessingStage, MetadataService } from '../services/data/metadata-service';
 import { ObjectServiceConfig, ObjectService } from '../services/data/object-service';
 import { DbConfig } from '../types/db.types';
-import { EncryptionConfig, EncryptionService } from '../utils/encryption-service';
 import { exceptionHandlerFunction } from '../utils/error-handling';
 import { KeyOwner, KeyService } from '../utils/key-service';
 
@@ -13,10 +12,6 @@ interface FailedEvent {
 }
 
 // Initialize
-const encryptConfig: EncryptionConfig = {
-    key: process.env.AES_KEY_UTIL!,
-};
-
 const dbConfig: DbConfig = {
     table: process.env.METADATASTORAGE_TABLE_NAME!,
     region: process.env.AWS_DEFAULT_REGION!,
@@ -29,8 +24,6 @@ const objectConfig: ObjectServiceConfig = {
 
 ObjectService.initialize(objectConfig);
 MetadataService.initialize(dbConfig);
-EncryptionService.initialize(encryptConfig);
-
 interface AssetUrls {
     streaming: {
         hls: string;
@@ -80,15 +73,13 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                         const key:string = s3Event.s3.object.key;
                         const bucket:string = s3Event.s3.bucket.name;
                         const owner: KeyOwner = KeyService.getOwner(key);
-                        const encryptedUID = owner.userId;
-                        const userId: string = EncryptionService.decrypt(encryptedUID);
-                        owner.userId = userId;
+                        const userId = owner.userId;
 
                         const assetId: string = owner.assetId;
                         const postProcessingValidationStart = new Date().toISOString();
                         try {
                             const dbCount:number = parseInt( await MetadataService.getFileCount(owner), 10 );
-                            const s3Count:number = await ObjectService.getFileCount(`${encryptedUID}/${assetId}`)-1;
+                            const s3Count:number = await ObjectService.getFileCount(`${userId}/${assetId}`)-1;
 
                             if (dbCount == s3Count ){
                                 await MetadataService.updateProgress(
@@ -103,7 +94,7 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                                 );
 
                                 const completionStart = new Date().toISOString();
-                                const assetUrls = generateAssetUrls(encryptedUID, assetId);
+                                const assetUrls = generateAssetUrls(userId, assetId);
                                 const result = await MetadataService.updateMetadata(
                                     owner,
                                     MetadataPath.DISTRIBUTION,
