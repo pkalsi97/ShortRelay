@@ -6,11 +6,6 @@ import { DbConfig } from '../types/db.types';
 import { exceptionHandlerFunction } from '../utils/error-handling';
 import { KeyOwner, KeyService } from '../utils/key-service';
 
-interface FailedEvent {
-    bucket: string;
-    key: string;
-}
-
 // Initialize
 const dbConfig: DbConfig = {
     table: process.env.METADATASTORAGE_TABLE_NAME!,
@@ -61,9 +56,8 @@ function generateAssetUrls(userId: string, assetId: string): AssetUrls {
     };
 }
 
-export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> => {
+export const completionDLQHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> => {
     const batchItemFailures: SQSBatchItemFailure[] = [];
-    const failedS3Events: FailedEvent[] = [];
     await Promise.all(
         messages.Records.map(async (sqsRecord) => {
             try {
@@ -71,7 +65,6 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                 await Promise.all(
                     s3Events.Records.map(async (s3Event) => {
                         const key:string = s3Event.s3.object.key;
-                        const bucket:string = s3Event.s3.bucket.name;
                         const owner: KeyOwner = KeyService.getOwner(key);
                         const userId = owner.userId;
 
@@ -117,7 +110,7 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                                         ProcessingStage.Completion,
                                         'Finished',
                                         {
-                                            status: Progress.FAILED,
+                                            status: Progress.HOLD,
                                             startTime: completionStart,
                                             error: 'N.A',
                                         },
@@ -131,7 +124,7 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                                     {
                                         status: Progress.HOLD,
                                         startTime: postProcessingValidationStart,
-                                        error: 'Count Dont Match',
+                                        error: 'Count Match Issue',
                                     },
                                 );
                                 await MetadataService.markCriticalFailure(owner, true);
@@ -149,18 +142,11 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                                 },
                             );
                             await MetadataService.markCriticalFailure(owner, true);
-                            failedS3Events.push({
-                                key,
-                                bucket,
-                            });
                         }
                     }),
                 );
             } catch (error){
                 exceptionHandlerFunction(error);
-                batchItemFailures.push({
-                    itemIdentifier: sqsRecord.messageId,
-                });
             }
         }),
     );

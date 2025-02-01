@@ -396,7 +396,7 @@ Resources:
       Handler: handlers/event-handler.eventHandler
       Runtime: nodejs18.x
       MemorySize: 2048
-      Timeout: 60
+      Timeout: 30
       Tracing: Active
       Architectures:
         - arm64
@@ -412,8 +412,8 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt UploadEventQueue.Arn
-            BatchSize: 3
-            MaximumBatchingWindowInSeconds: 3
+            BatchSize: 4
+            MaximumBatchingWindowInSeconds: 2
       Environment:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
@@ -428,8 +428,8 @@ Resources:
       CodeUri: ./dist
       Handler: handlers/task-handler.taskHandler
       Runtime: nodejs18.x
-      MemorySize: 2048
-      Timeout: 60
+      MemorySize: 1024
+      Timeout: 30
       Tracing: Active
       Architectures:
         - arm64
@@ -459,8 +459,8 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt TaskQueue.Arn
-            BatchSize: 3
-            MaximumBatchingWindowInSeconds: 30
+            BatchSize: 4
+            MaximumBatchingWindowInSeconds: 1
       Environment:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
@@ -519,7 +519,8 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt CompletionQueue.Arn
-            BatchSize: 1
+            BatchSize: 5
+            MaximumBatchingWindowInSeconds: 1
       Environment:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
@@ -535,7 +536,7 @@ Resources:
       Handler: handlers/validation-handler.validationHandler
       Runtime: nodejs18.x
       MemorySize: 3000
-      Timeout: 60
+      Timeout: 30
       Tracing: Active
       Architectures:
         - arm64
@@ -579,7 +580,8 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt ValidationQueue.Arn
-            BatchSize: 1
+            BatchSize: 3
+            MaximumBatchingWindowInSeconds: 1
       Environment:
         Variables:
           TASKQUEUE_QUEUE_NAME: !GetAtt TaskQueue.QueueName
@@ -630,7 +632,7 @@ Resources:
       CodeUri: ./dist
       Handler: handlers/dlq/event-dlq-handler.eventDLQHandler
       Runtime: nodejs18.x
-      MemorySize: 512
+      MemorySize: 256
       Timeout: 60
       Tracing: Active
       Architectures:
@@ -649,7 +651,8 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt UploadDLQ.Arn
-            BatchSize: 1
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 1
   ValidationDLQHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -657,7 +660,7 @@ Resources:
       CodeUri: ./dist
       Handler: handlers/dlq/validation-dlq-handler.validationDLQHandler
       Runtime: nodejs18.x
-      MemorySize: 512
+      MemorySize: 256
       Timeout: 60
       Tracing: Active
       Architectures:
@@ -676,7 +679,8 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt ValidationDLQ.Arn
-            BatchSize: 1
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 1
   CompletionDLQHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -694,10 +698,38 @@ Resources:
         - AWSXrayWriteOnlyAccess
         - DynamoDBCrudPolicy:
             TableName: !Ref MetadataStorage
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:GetObjectAcl
+                - s3:GetObjectLegalHold
+                - s3:GetObjectRetention
+                - s3:GetObjectTorrent
+                - s3:GetObjectVersion
+                - s3:GetObjectVersionAcl
+                - s3:GetObjectVersionForReplication
+                - s3:GetObjectVersionTorrent
+                - s3:ListBucket
+                - s3:ListBucketMultipartUploads
+                - s3:ListBucketVersions
+                - s3:ListMultipartUploadParts
+                - s3:AbortMultipartUpload
+                - s3:DeleteObject
+                - s3:DeleteObjectVersion
+                - s3:PutObject
+                - s3:PutObjectLegalHold
+                - s3:PutObjectRetention
+                - s3:RestoreObject
+              Resource:
+                - !Sub arn:${AWS::Partition}:s3:::${ContentStorage}
+                - !Sub arn:${AWS::Partition}:s3:::${ContentStorage}/*
       Environment:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+          CONTENTSTORAGE_BUCKET_NAME: !Ref ContentStorage
+          CONTENTSTORAGE_BUCKET_ARN: !GetAtt ContentStorage.Arn
       Events:
         CompletionDLQ:
           Type: SQS
@@ -711,7 +743,7 @@ Resources:
       CodeUri: ./dist
       Handler: handlers/dlq/task-dlq-handler.taskDLQHandler
       Runtime: nodejs18.x
-      MemorySize: 512
+      MemorySize: 256
       Timeout: 60
       Tracing: Active
       Architectures:
@@ -726,7 +758,8 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt TaskDLQ.Arn
-            BatchSize: 1
+            BatchSize: 4
+            MaximumBatchingWindowInSeconds: 1
       Environment:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
@@ -890,8 +923,8 @@ Resources:
     Properties:
       QueueName: !Sub ${AppId}-UploadEventQueue
       MessageRetentionPeriod: 345600
-      VisibilityTimeout: 60
-      DelaySeconds: 5
+      VisibilityTimeout: 30
+      DelaySeconds: 2
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt UploadDLQ.Arn
         maxReceiveCount: 1
@@ -917,10 +950,10 @@ Resources:
       QueueName: !Sub ${AppId}-CompletionQueue
       MessageRetentionPeriod: 345600
       VisibilityTimeout: 60
-      DelaySeconds: 1
+      DelaySeconds: 5
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt CompletionDLQ.Arn
-        maxReceiveCount: 2
+        maxReceiveCount: 4
   ContentStorageToCompletionQueuePermission:
     Type: AWS::SQS::QueuePolicy
     Properties:
@@ -942,8 +975,7 @@ Resources:
     Properties:
       QueueName: !Sub ${AppId}-TaskQueue
       MessageRetentionPeriod: 345600
-      VisibilityTimeout: 60
-      DelaySeconds: 1
+      VisibilityTimeout: 30
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt TaskDLQ.Arn
         maxReceiveCount: 5
@@ -952,29 +984,32 @@ Resources:
     Properties:
       QueueName: !Sub ${AppId}-ValidationQueue
       MessageRetentionPeriod: 345600
-      VisibilityTimeout: 60
-      DelaySeconds: 1
+      VisibilityTimeout: 30
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt ValidationDLQ.Arn
-        maxReceiveCount: 5
+        maxReceiveCount: 2
   TaskDLQ:
     Type: AWS::SQS::Queue
     Properties:
+      QueueName: !Sub ${AppId}-TaskDLQ
       MessageRetentionPeriod: 345600
       VisibilityTimeout: 60
   UploadDLQ:
     Type: AWS::SQS::Queue
     Properties:
+      QueueName: !Sub ${AppId}-UploadDLQ
       MessageRetentionPeriod: 345600
       VisibilityTimeout: 60
   CompletionDLQ:
     Type: AWS::SQS::Queue
     Properties:
+      QueueName: !Sub ${AppId}-CompletionDLQ
       MessageRetentionPeriod: 345600
       VisibilityTimeout: 60
   ValidationDLQ:
     Type: AWS::SQS::Queue
     Properties:
+      QueueName: !Sub ${AppId}-ValidationDLQ
       MessageRetentionPeriod: 345600
       VisibilityTimeout: 60
   # -----------------------------------------------------------------------------------------------------------------------
