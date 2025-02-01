@@ -56,7 +56,7 @@ function generateAssetUrls(userId: string, assetId: string): AssetUrls {
     };
 }
 
-export const completionDLQHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> => {
+export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchResponse> => {
     const batchItemFailures: SQSBatchItemFailure[] = [];
     await Promise.all(
         messages.Records.map(async (sqsRecord) => {
