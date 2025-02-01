@@ -4,10 +4,14 @@ import { Progress, ProcessingStage, MetadataService } from '../services/data/met
 import { EcsConfig, WorkerService } from '../services/workers-service';
 import { DbConfig } from '../types/db.types';
 import { Task } from '../types/task.type';
+import { EncryptionConfig, EncryptionService } from '../utils/encryption-service';
 import { exceptionHandlerFunction } from '../utils/error-handling';
 import { KeyOwner } from '../utils/key-service';
 
 // init
+const encryptConfig: EncryptionConfig = {
+    key: process.env.AES_KEY_UTIL!,
+};
 const dbConfig: DbConfig = {
     table: process.env.METADATASTORAGE_TABLE_NAME!,
     region: process.env.AWS_DEFAULT_REGION!,
@@ -22,6 +26,7 @@ const ecsConfig:  EcsConfig = {
     taskLimit: parseInt(process.env.FARGATE_TASK_LIMIT!, 10 ),
 };
 
+EncryptionService.initialize(encryptConfig);
 MetadataService.initialize(dbConfig);
 WorkerService.initialize(ecsConfig);
 
@@ -30,12 +35,12 @@ export const taskHandler = async (event: SQSEvent): Promise<SQSBatchResponse> =>
     for (const record of event.Records) {
         const task: Task = JSON.parse(record.body);
         const owner: KeyOwner = { userId: task.userId, assetId: task.assetId };
-
+        const encryptedUID = EncryptionService.encrypt(task.userId);
         try {
             const canJobBeAssignedResult = await WorkerService.canJobBeAssigned();
 
             if (canJobBeAssignedResult){
-                const assignJobResult = await WorkerService.assignJob(task);
+                const assignJobResult = await WorkerService.assignJob(task, encryptedUID);
                 if (assignJobResult){
                     await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.COMPLETED);
                     await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'endTime', new Date().toISOString());

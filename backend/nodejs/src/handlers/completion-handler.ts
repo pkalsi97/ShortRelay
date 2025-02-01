@@ -3,6 +3,7 @@ import { SQSEvent, SQSBatchResponse, SQSBatchItemFailure, S3Event } from 'aws-la
 import { MetadataPath, Progress, ProcessingStage, MetadataService } from '../services/data/metadata-service';
 import { ObjectServiceConfig, ObjectService } from '../services/data/object-service';
 import { DbConfig } from '../types/db.types';
+import { EncryptionConfig, EncryptionService } from '../utils/encryption-service';
 import { exceptionHandlerFunction } from '../utils/error-handling';
 import { KeyOwner, KeyService } from '../utils/key-service';
 
@@ -12,6 +13,9 @@ interface FailedEvent {
 }
 
 // Initialize
+const encryptConfig: EncryptionConfig = {
+    key: process.env.AES_KEY_UTIL!,
+};
 
 const dbConfig: DbConfig = {
     table: process.env.METADATASTORAGE_TABLE_NAME!,
@@ -25,6 +29,7 @@ const objectConfig: ObjectServiceConfig = {
 
 ObjectService.initialize(objectConfig);
 MetadataService.initialize(dbConfig);
+EncryptionService.initialize(encryptConfig);
 
 interface AssetUrls {
     streaming: {
@@ -50,16 +55,16 @@ function generateAssetUrls(userId: string, assetId: string): AssetUrls {
         streaming: {
             hls: `https://${CLOUDFRONT_DOMAIN}/${basePath}/hls/master.m3u8`,
             iframe: `https://${CLOUDFRONT_DOMAIN}/${basePath}/hls/master_iframe.m3u8`,
-            audio: `https://${CLOUDFRONT_DOMAIN}/${basePath}/hls/audio/stream.m3u8`
+            audio: `https://${CLOUDFRONT_DOMAIN}/${basePath}/hls/audio/stream.m3u8`,
         },
         downloads: {
             high: `https://${CLOUDFRONT_DOMAIN}/${basePath}/mp4/1080p.mp4`,
             medium: `https://${CLOUDFRONT_DOMAIN}/${basePath}/mp4/720p.mp4`,
             low: `https://${CLOUDFRONT_DOMAIN}/${basePath}/mp4/480p.mp4`,
             mobile: `https://${CLOUDFRONT_DOMAIN}/${basePath}/mp4/360p.mp4`,
-            audio: `https://${CLOUDFRONT_DOMAIN}/${basePath}/mp4/audio.m4a`
+            audio: `https://${CLOUDFRONT_DOMAIN}/${basePath}/mp4/audio.m4a`,
         },
-        thumbnail: `https://${CLOUDFRONT_DOMAIN}/${basePath}/assets/thumbnail.png`
+        thumbnail: `https://${CLOUDFRONT_DOMAIN}/${basePath}/assets/thumbnail.png`,
     };
 }
 
@@ -75,12 +80,15 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                         const key:string = s3Event.s3.object.key;
                         const bucket:string = s3Event.s3.bucket.name;
                         const owner: KeyOwner = KeyService.getOwner(key);
-                        const userId: string = owner.userId;
+                        const encryptedUID = owner.userId;
+                        const userId: string = EncryptionService.decrypt(encryptedUID);
+                        owner.userId = userId;
+
                         const assetId: string = owner.assetId;
                         const postProcessingValidationStart = new Date().toISOString();
                         try {
                             const dbCount:number = parseInt( await MetadataService.getFileCount(owner), 10 );
-                            const s3Count:number = await ObjectService.getFileCount(`${userId}/${assetId}`)-1;
+                            const s3Count:number = await ObjectService.getFileCount(`${encryptedUID}/${assetId}`)-1;
 
                             if (dbCount == s3Count ){
                                 await MetadataService.updateProgress(
@@ -95,7 +103,7 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                                 );
 
                                 const completionStart = new Date().toISOString();
-                                const assetUrls = generateAssetUrls(userId,assetId);
+                                const assetUrls = generateAssetUrls(encryptedUID, assetId);
                                 const result = await MetadataService.updateMetadata(
                                     owner,
                                     MetadataPath.DISTRIBUTION,
