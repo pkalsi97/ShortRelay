@@ -9,33 +9,35 @@ phases:
       - mkdir -p ffmpeg-shared
       - curl -s -O https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-arm64-static.tar.xz
       - tar xf ffmpeg-git-arm64-static.tar.xz -C ffmpeg-shared
-      - FFMPEG_DIR=$(ls -d ffmpeg-shared/ffmpeg-git-*)
+
+      - FFMPEG_FOLDER=$(ls ffmpeg-shared)
+      - echo "FFmpeg folder is ${FFMPEG_FOLDER}"
       
       - cd backend/nodejs
       - npm install --quiet
       - cd src/layers/resource-layer/nodejs && npm install --quiet && cd ../../../..
       
       - mkdir -p src/layers/resource-layer/ffmpeg
-      - cp $FFMPEG_DIR/ffmpeg src/layers/resource-layer/ffmpeg/
-      - cp $FFMPEG_DIR/ffprobe src/layers/resource-layer/ffmpeg/
+      - cp ../../../../ffmpeg-shared/${FFMPEG_FOLDER}/ffmpeg src/layers/resource-layer/ffmpeg/
+      - cp ../../../../ffmpeg-shared/${FFMPEG_FOLDER}/ffprobe src/layers/resource-layer/ffmpeg/
       - chmod +x src/layers/resource-layer/ffmpeg/*
       
       - mkdir -p workers/processor/ffmpeg
-      - cp $FFMPEG_DIR/ffmpeg workers/processor/ffmpeg/
-      - cp $FFMPEG_DIR/ffprobe workers/processor/ffmpeg/
-      
-      - rm -rf ffmpeg-shared ffmpeg-git-arm64-static.tar.xz
+      - cp ../../ffmpeg-shared/${FFMPEG_FOLDER}/ffmpeg workers/processor/ffmpeg/
+      - cp ../../ffmpeg-shared/${FFMPEG_FOLDER}/ffprobe workers/processor/ffmpeg/
       
       - cd src/layers/resource-layer
       - zip -q -r ../../../resource-layer.zip nodejs ffmpeg
       - cd ../../../
-      - cd ..
       
+      - cd ../..
+      - rm -rf ffmpeg-shared ffmpeg-git-arm64-static.tar.xz
+
   pre_build:
     commands:
       - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://127.0.0.1:2375 --storage-driver=overlay2 &
       - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
- 
+      
       - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
       
   build:
