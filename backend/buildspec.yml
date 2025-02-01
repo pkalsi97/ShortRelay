@@ -6,32 +6,36 @@ phases:
       nodejs: 18
       golang: 1.21
     commands:
+      - mkdir -p ffmpeg-shared
+      - curl -s -O https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-arm64-static.tar.xz
+      - tar xf ffmpeg-git-arm64-static.tar.xz -C ffmpeg-shared
+      - FFMPEG_DIR=$(ls -d ffmpeg-shared/ffmpeg-git-*)
+      
       - cd backend/nodejs
       - npm install --quiet
-      # Layer dependencies
-      - echo "Installing layer dependencies..."
       - cd src/layers/resource-layer/nodejs && npm install --quiet && cd ../../../..
       
       - mkdir -p src/layers/resource-layer/ffmpeg
+      - cp $FFMPEG_DIR/ffmpeg src/layers/resource-layer/ffmpeg/
+      - cp $FFMPEG_DIR/ffprobe src/layers/resource-layer/ffmpeg/
+      - chmod +x src/layers/resource-layer/ffmpeg/*
+      
+      - mkdir -p workers/processor/ffmpeg
+      - cp $FFMPEG_DIR/ffmpeg workers/processor/ffmpeg/
+      - cp $FFMPEG_DIR/ffprobe workers/processor/ffmpeg/
+      
+      - rm -rf ffmpeg-shared ffmpeg-git-arm64-static.tar.xz
+      
       - cd src/layers/resource-layer
-      - curl -s -O https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-arm64-static.tar.xz
-      - tar xf ffmpeg-git-arm64-static.tar.xz > /dev/null 2>&1
-      - cp ffmpeg-git-*/ffmpeg ffmpeg/
-      - cp ffmpeg-git-*/ffprobe ffmpeg/
-      - chmod +x ffmpeg/ffmpeg ffmpeg/ffprobe
-      - rm -rf ffmpeg-git-* ffmpeg-git-arm64-static.tar.xz
-      - echo "Creating layer zip..."
       - zip -q -r ../../../resource-layer.zip nodejs ffmpeg
       - cd ../../../
-      - rm -rf src/layers/resource-layer/ffmpeg/*
       - cd ..
       
   pre_build:
     commands:
       - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://127.0.0.1:2375 --storage-driver=overlay2 &
       - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
-
-      - echo "Logging in to Amazon ECR..."
+ 
       - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
       
   build:
@@ -43,9 +47,6 @@ phases:
       - cd ..
       
       - cd workers/processor
-      - GOOS=linux GOARCH=arm64 go build -o processor ./cmd/processor
-      
-      - echo "Building Docker image..."
       - export BUILD_TIME=$(date +%Y%m%d%H%M%S)
       - docker build -t ${ECR_REPOSITORY}:${BUILD_TIME} .
       - docker tag ${ECR_REPOSITORY}:${BUILD_TIME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_TIME}
@@ -54,7 +55,6 @@ phases:
       
   post_build:
     commands:
-      - echo "Pushing Docker image..."
       - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_TIME}
       - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
 

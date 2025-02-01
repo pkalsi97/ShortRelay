@@ -1,26 +1,19 @@
-FROM public.ecr.aws/docker/library/golang:1.21-alpine AS builder
-
+FROM golang:1.21-alpine AS builder
 WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-RUN GOOS=linux GOARCH=arm64 go build -o processor ./cmd/processor
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+    go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o processor ./cmd/processor
 
-FROM public.ecr.aws/docker/library/alpine:latest
-
-RUN apk add --no-cache curl tar xz
-
-RUN curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz -o ffmpeg.tar.xz && \
-    tar xf ffmpeg.tar.xz && \
-    mv ffmpeg-*-arm64-static/ffmpeg /usr/local/bin/ && \
-    mv ffmpeg-*-arm64-static/ffprobe /usr/local/bin/ && \
-    chmod +x /usr/local/bin/ffmpeg && \
-    chmod +x /usr/local/bin/ffprobe && \
-    rm -rf ffmpeg.tar.xz ffmpeg-*-arm64-static
-
-RUN mkdir -p /tmp/footage
-
+FROM scratch
 COPY --from=builder /app/processor /processor
-RUN chmod +x /processor
-
+COPY ffmpeg/ffmpeg /usr/local/bin/ffmpeg
+COPY ffmpeg/ffprobe /usr/local/bin/ffprobe
+WORKDIR /tmp
+RUN mkdir -p /tmp/footage
 ENV FOOTAGE_DIR=/tmp/footage
-
 CMD ["/processor"]
