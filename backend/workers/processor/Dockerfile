@@ -8,12 +8,13 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
     -ldflags="-s -w" \
     -trimpath \
     -o processor ./cmd/processor
+RUN mkdir -p /tmp/footage
 
 FROM scratch
 COPY --from=builder /app/processor /processor
 COPY ffmpeg/ffmpeg /usr/local/bin/ffmpeg
 COPY ffmpeg/ffprobe /usr/local/bin/ffprobe
+COPY --from=builder /tmp/footage /tmp/footage
 WORKDIR /tmp
-RUN mkdir -p /tmp/footage
 ENV FOOTAGE_DIR=/tmp/footage
 CMD ["/processor"]
