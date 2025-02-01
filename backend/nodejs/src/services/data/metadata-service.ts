@@ -1,4 +1,5 @@
-import { GetItemCommand, PutItemCommand, DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+import { GetItemCommand, PutItemCommand, DynamoDBClient, UpdateItemCommand, QueryCommand } from '@aws-sdk/client-dynamodb';
+import { unmarshall } from '@aws-sdk/util-dynamodb';
 
 import { AssetRecord, StageProgressUpdate, createInitialRecord } from '../../types/asset-record.types';
 import { DbConfig } from '../../types/db.types';
@@ -257,6 +258,32 @@ const updateProgressField = async (
     return response.$metadata.httpStatusCode === 200;
 };
 
+const getAllAssets = async (userId: string): Promise<Record<string, any>[]> => {
+    const command = new QueryCommand({
+        TableName: dbConfig.table,
+        KeyConditionExpression: 'userId = :userId',
+        ExpressionAttributeValues: {
+            ':userId': { S: userId },
+        },
+    });
+
+    const response = await dbClient.send(command);
+    return response.Items ? response.Items.map(item => unmarshall(item)) : [];
+};
+
+const getAsset = async (userId: string, assetId: string): Promise<Record<string, any> | null> => {
+    const command = new GetItemCommand({
+        TableName: dbConfig.table,
+        Key: {
+            userId: { S: userId },
+            assetId: { S: assetId },
+        },
+    });
+
+    const response = await dbClient.send(command);
+    return response.Item ? unmarshall(response.Item) : null;
+};
+
 /* eslint-enable @typescript-eslint/no-explicit-any */
 export const MetadataService = {
     initialize,
@@ -267,4 +294,6 @@ export const MetadataService = {
     getCreatedTime,
     updateProgressField,
     getFileCount,
+    getAllAssets,
+    getAsset,
 };
