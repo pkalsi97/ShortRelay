@@ -1,5 +1,4 @@
-![Photo](./application-composer-backend.yml.png)
-
+![alt text](./backend.png)
 
 # ShortRelay Backend
 
