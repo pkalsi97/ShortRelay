@@ -39,19 +39,23 @@ func getBandwidth(bitrate string) int {
 }
 
 func createHLSDirectories(paths *OutputPaths, resolutions []Resolution) error {
+    dirs := []string{
+        paths.HLSDir,
+        filepath.Join(paths.HLSDir, "audio"),
+        filepath.Join(paths.HLSDir, "iframe"),
+    }
+
     for _, res := range resolutions {
-        dir := filepath.Join(paths.HLSDir, "video", res.Name, "segments")
+        dirs = append(dirs, 
+            filepath.Join(paths.HLSDir, "video", res.Name),
+            filepath.Join(paths.HLSDir, "iframe", res.Name),
+        )
+    }
+
+    for _, dir := range dirs {
         if err := os.MkdirAll(dir, 0755); err != nil {
-            return err
+            return fmt.Errorf("failed to create directory %s: %v", dir, err)
         }
-    }
-
-    if err := os.MkdirAll(filepath.Join(paths.HLSDir, "audio", "segments"), 0755); err != nil {
-        return err
-    }
-
-    if err := os.MkdirAll(filepath.Join(paths.HLSDir, "iframe"), 0755); err != nil {
-        return err
     }
 
     return nil

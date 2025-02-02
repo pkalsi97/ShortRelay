@@ -162,6 +162,10 @@ func (p *Processor) GenerateHLSPlaylists() error {
 
 func (p *Processor) generateHLSStream(res Resolution) error {
     streamDir := filepath.Join(p.Paths.HLSDir, "video", res.Name)
+    if err := os.MkdirAll(streamDir, 0755); err != nil {
+        return fmt.Errorf("failed to create video directory: %v", err)
+    }
+
     inputFile := filepath.Join(p.Paths.MP4Dir, fmt.Sprintf("%s.mp4", res.Name))
     audioFile := filepath.Join(p.Paths.MP4Dir, "audio.m4a")
 
@@ -181,46 +185,49 @@ func (p *Processor) generateHLSStream(res Resolution) error {
         "-c:v", "copy",
         "-c:a", "copy",
         "-f", "hls",
-
-        "-hls_time", "2",                
+        "-hls_time", "2",
         "-hls_playlist_type", "vod",
         "-hls_flags", "independent_segments+program_date_time+discont_start",
-        "-hls_segment_type", "fmp4", 
+        "-hls_segment_type", "fmp4",
         "-hls_fmp4_init_filename", "init.mp4",
         "-hls_list_size", "0",
         "-start_number", "0",
-        
-        "-hls_segment_filename", filepath.Join(streamDir, "segments", "data%03d.m4s"),
-        
-        filepath.Join(streamDir, "stream.m3u8"))
+        "-hls_segment_filename", "data%03d.m4s",
+        "stream.m3u8")
 
     cmd := exec.Command("ffmpeg", args...)
+    cmd.Dir = streamDir
     cmd.Stdout = os.Stdout
     cmd.Stderr = os.Stderr
-
     return cmd.Run()
 }
 
 func (p *Processor) generateAudioStream() error {
     audioDir := filepath.Join(p.Paths.HLSDir, "audio")
+    if err := os.MkdirAll(audioDir, 0755); err != nil {
+        return fmt.Errorf("failed to create audio directory: %v", err)
+    }
+
     args := []string{
         "-v", "error",
         "-i", filepath.Join(p.Paths.MP4Dir, "audio.m4a"),
         "-c:a", "copy",
         "-f", "hls",
-        
         "-hls_time", "2",
         "-hls_playlist_type", "vod",
         "-hls_flags", "independent_segments+program_date_time",
         "-hls_segment_type", "fmp4",
         "-hls_fmp4_init_filename", "init.mp4",
         "-hls_list_size", "0",
-        
-        "-hls_segment_filename", filepath.Join(audioDir, "segments", "data%03d.m4s"),
-        filepath.Join(audioDir, "stream.m3u8"),
+        "-hls_segment_filename", "data%03d.m4s",
+        "stream.m3u8",
     }
 
-    return runFFmpeg(args)
+    cmd := exec.Command("ffmpeg", args...)
+    cmd.Dir = audioDir
+    cmd.Stdout = os.Stdout
+    cmd.Stderr = os.Stderr
+    return cmd.Run()
 }
 
 func (p *Processor) generateMasterPlaylist() error {
@@ -271,36 +278,55 @@ func (p *Processor) GenerateIframePlaylists() error {
 
 func (p *Processor) generateIframePlaylist(res Resolution) error {
     resIframeDir := filepath.Join(p.Paths.HLSDir, "iframe", res.Name)
-    if err := os.MkdirAll(filepath.Join(resIframeDir, "segments"), 0755); err != nil {
+    if err := os.MkdirAll(resIframeDir, 0755); err != nil {
         return err
     }
 
     inputFile := filepath.Join(p.Paths.MP4Dir, fmt.Sprintf("%s.mp4", res.Name))
-    args := []string{
+
+    tempFile := filepath.Join(resIframeDir, "keyframes.mp4")
+    keyframeArgs := []string{
         "-v", "error",
         "-i", inputFile,
+        "-c:v", "libx264",
+        "-an",
+        "-x264-params", "keyint=1:scenecut=0",
+        "-crf", "17",
+        "-preset", "veryfast",
+        tempFile,
+    }
+
+    cmd := exec.Command("ffmpeg", keyframeArgs...)
+    if err := cmd.Run(); err != nil {
+        return fmt.Errorf("keyframe generation failed: %v", err)
+    }
+
+    args := []string{
+        "-v", "error",
+        "-i", tempFile,
         "-c:v", "copy",
         "-an",
         "-f", "hls",
-
-        "-hls_time", "1",
+        "-hls_time", "2",
         "-hls_playlist_type", "vod",
-        "-hls_flags", "independent_segments+discont_start",
+        "-hls_flags", "independent_segments+program_date_time+discont_start",
         "-hls_segment_type", "fmp4",
         "-hls_fmp4_init_filename", "init.mp4",
-        
-        "-force_key_frames", "expr:gte(t,n_forced*1)",
-        "-g", "30",
-        "-keyint_min", "30",
-        
-        "-hls_segment_filename", filepath.Join(resIframeDir, "segments", "iframe%03d.m4s"),
-        filepath.Join(resIframeDir, "iframe.m3u8"),
+        "-hls_list_size", "0",
+        "-start_number", "0",
+        "-hls_segment_filename", "iframe%03d.m4s",
+        "iframe.m3u8",
     }
 
-    cmd := exec.Command("ffmpeg", args...)
+    cmd = exec.Command("ffmpeg", args...)
+    cmd.Dir = resIframeDir
     cmd.Stdout = os.Stdout
     cmd.Stderr = os.Stderr
-    return cmd.Run()
+    err := cmd.Run()
+
+    os.Remove(tempFile)
+
+    return err
 }
 
 func (p *Processor) generateMasterIframePlaylist() error {
@@ -308,28 +334,27 @@ func (p *Processor) generateMasterIframePlaylist() error {
         "#EXTM3U",
         "#EXT-X-VERSION:6",
         "",
+        "#EXT-X-PLAYLIST-TYPE:VOD",
+        "#EXT-X-INDEPENDENT-SEGMENTS",
     }
 
     for _, res := range p.Resolutions {
         bandwidth := getBandwidth(res.Bitrate) / 4
         
-        codecs := "avc1.640028"
-        
         masterPlaylist = append(masterPlaylist,
-            fmt.Sprintf("#EXT-X-I-FRAME-STREAM-INF:"+
+            fmt.Sprintf("#EXT-X-STREAM-INF:"+
                 "BANDWIDTH=%d,"+
                 "RESOLUTION=%dx%d,"+
-                "CODECS=\"%s\","+
-                "URI=\"iframe/%s/iframe.m3u8\"",
+                "CODECS=\"avc1.640028\"",
                 bandwidth,
-                res.Width, res.Height,
-                codecs,
-                res.Name))
+                res.Width, res.Height),
+            fmt.Sprintf("iframe/%s/iframe.m3u8", res.Name))
     }
 
     masterFile := filepath.Join(p.Paths.HLSDir, "master_iframe.m3u8")
     return os.WriteFile(masterFile, []byte(strings.Join(masterPlaylist, "\n")), 0644)
 }
+
 func Process(inputPath string, resolutions []Resolution) error {
     processor, err := NewProcessor(inputPath, resolutions)
     if err != nil {
