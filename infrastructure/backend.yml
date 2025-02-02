@@ -61,6 +61,9 @@ Parameters:
   TransportExpiryDays:
     Type: Number
     Description: File Expiry Days for Transport
+  ContentExpiryDays:
+    Type: Number
+    Description: File Expiry Days for Content
   AllowedOrigin:
     Type: String
     Description: Allowed CORS
@@ -838,6 +841,10 @@ Resources:
       PublicAccessBlockConfiguration:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            ExpirationInDays: !Ref ContentExpiryDays
       NotificationConfiguration:
         QueueConfigurations:
           - Event: s3:ObjectCreated:Put
@@ -1261,7 +1268,7 @@ Resources:
             - OPTIONS
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
-          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          CachePolicyId: !Ref OneHourCachePolicy
           OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf
           ResponseHeadersPolicyId: !Ref CORSPolicy
         IPV6Enabled: true
@@ -1300,6 +1307,23 @@ Resources:
             IncludeSubdomains: true
             Preload: true
             Override: true
+
+  OneHourCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: OneHourCachePolicy
+        DefaultTTL: 3600
+        MinTTL: 0
+        MaxTTL: 3600
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          HeadersConfig:
+            HeaderBehavior: none
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
 Outputs:
   DistributionDomainName:
     Description: CloudFront Distribution Domain Name
@@ -1319,7 +1343,10 @@ Metadata:
     Group3:
       Label: CDN
       Members:
-        - Group11
+        - ContentDistribution
+        - CloudFrontOriginAccessControl
+        - CORSPolicy
+        - CachePolicy
     Group4:
       Label: PROCESSING
       Members:
@@ -1373,12 +1400,6 @@ Metadata:
         - CompletionHandler
         - CompletionQueue
         - CompletionDLQ
-    Group11:
-      Label: CDN
-      Members:
-        - ContentDistribution
-        - CloudFrontOriginAccessControl
-        - CORSPolicy
     Group12:
       Label: APIS
       Members:
