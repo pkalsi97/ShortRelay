@@ -1,3 +1,6 @@
+![alt text](/application-composer-backend.yml.png)
+
+
 # ShortRelay Backend
 
 This project implements a serverless architecture for short video transcoding and delivery using AWS services, defined with the AWS Serverless Application Model (SAM).
