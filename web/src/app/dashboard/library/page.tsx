@@ -6,11 +6,8 @@ import Image from 'next/image';
 import { userApi } from '@/utils/api-client';
 import { authService } from '@/utils/auth.service';
 import { toast } from 'react-hot-toast';
-interface ApiResponse {
-  success: boolean;
-  message: string;
-  data: Asset[];
-}
+import { Asset, ApiResponse, Stage } from '@/types/asset.types';
+import { AssetDetailsModal } from '@/components/AssetDetailsModal';
 interface StageProgressUpdate {
   status: string;
   startTime: string;
@@ -35,31 +32,6 @@ interface Progress {
   completion?: StageProgressUpdate;
 }
 
-interface Asset {
-  assetId: string;
-  stage: string;
-  hasCriticalFailure: boolean;
-  progress: Progress;
-  metadata: {
-      distribution: {
-          thumbnail?: string;
-      };
-      technical?: {
-          duration: number;
-      };
-  };
-  createdAt: string;
-  updatedAt: string;
-}
-
-type Stage = 
-  | 'upload'
-  | 'validation'
-  | 'queued'
-  | 'processing'
-  | 'finalizing'
-  | 'finished'
-  | 'failed';
 
 const determineStage = (asset: Asset): Stage => {
   if (asset.hasCriticalFailure) {
@@ -152,7 +124,10 @@ const LoadingSkeleton = () => (
   </div>
 );
 
-const VideoCard = ({ asset }: { asset: Asset }) => {
+const VideoCard = ({ asset, onViewDetails }: { 
+  asset: Asset; 
+  onViewDetails: (assetId: string) => void 
+}) => {
   const currentStage = determineStage(asset);
   const stageDisplay = stageConfig[currentStage] || stageConfig['processing'];
 
@@ -194,7 +169,7 @@ const VideoCard = ({ asset }: { asset: Asset }) => {
             {stageDisplay.label}
           </span>
           <button
-            onClick={() => console.log('View details:', asset.assetId)}
+            onClick={() => onViewDetails(asset.assetId)}
             className="text-purple-500 hover:text-purple-400 text-sm transition-colors"
           >
             View Details
@@ -209,6 +184,7 @@ export default function Library() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
 
   const fetchAssets = useCallback(async () => {
     try {
@@ -248,7 +224,6 @@ export default function Library() {
     fetchAssets();
   }, [fetchAssets]);
 
-  // New sorting logic
   const { activeAssets, failedAssets } = useMemo(() => {
     const sortByDate = (a: Asset, b: Asset) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -270,66 +245,88 @@ export default function Library() {
     return { activeAssets: active, failedAssets: failed };
   }, [assets]);
 
+  const handleViewDetails = (assetId: string) => {
+    setSelectedAssetId(assetId);
+  };
+
   return (
-    <div className="max-w-4xl mx-auto pb-20">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-100">
-          Your Videos
-        </h1>
-        {!isLoading && (
-          <button
-            onClick={() => fetchAssets()}
-            className="text-sm text-purple-500 hover:text-purple-400 transition-colors"
-          >
-            Refresh
-          </button>
-        )}
-      </div>
-
-      {error && (
-        <div className="mt-4 p-4 bg-red-900/50 text-red-400 rounded-lg">
-          {error}
+    <>
+      <div className="max-w-4xl mx-auto pb-20">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-100">
+            Your Videos
+          </h1>
+          {!isLoading && (
+            <button
+              onClick={() => {
+                window.location.reload();
+              }}
+              className="text-sm text-purple-500 hover:text-purple-400 transition-colors"
+            >
+              Refresh
+            </button>
+          )}
         </div>
-      )}
 
-      <div className="mt-8">
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(6)].map((_, i) => <LoadingSkeleton key={i} />)}
-          </div>
-        ) : assets.length > 0 ? (
-          <>
-            {/* Active Assets */}
-            {activeAssets.length > 0 && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {activeAssets.map((asset) => (
-                    <VideoCard key={asset.assetId} asset={asset} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Failed Assets */}
-            {failedAssets.length > 0 && (
-              <div className="space-y-6 mt-8">
-                <h2 className="text-xl font-semibold text-gray-300">
-                  Failed Videos
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {failedAssets.map((asset) => (
-                    <VideoCard key={asset.assetId} asset={asset} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="col-span-full text-center py-12 text-gray-400">
-            No videos found. Upload your first video to get started.
+        {error && (
+          <div className="mt-4 p-4 bg-red-900/50 text-red-400 rounded-lg">
+            {error}
           </div>
         )}
+
+        <div className="mt-8">
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => <LoadingSkeleton key={i} />)}
+            </div>
+          ) : assets.length > 0 ? (
+            <>
+              {/* Active Assets */}
+              {activeAssets.length > 0 && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {activeAssets.map((asset) => (
+                      <VideoCard 
+                        key={asset.assetId} 
+                        asset={asset}
+                        onViewDetails={handleViewDetails}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Failed Assets */}
+              {failedAssets.length > 0 && (
+                <div className="space-y-6 mt-8">
+                  <h2 className="text-xl font-semibold text-gray-300">
+                    Failed Videos
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {failedAssets.map((asset) => (
+                      <VideoCard 
+                        key={asset.assetId} 
+                        asset={asset}
+                        onViewDetails={handleViewDetails}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="col-span-full text-center py-12 text-gray-400">
+              No videos found. Upload your first video to get started.
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      <AssetDetailsModal
+        isOpen={!!selectedAssetId}
+        onClose={() => setSelectedAssetId(null)}
+        assetId={selectedAssetId}
+      />
+    </>
   );
 }
