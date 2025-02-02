@@ -270,6 +270,15 @@ Resources:
                 type: aws_proxy
                 uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ContentRequestHandler.Arn}/invocations
               responses: {}
+          /v1/user/assets/progress:
+            get:
+              security:
+                - Cognito-Auth: []
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ContentRequestHandler.Arn}/invocations
+              responses: {}
 
   # -----------------------------------------------------------------------------------------------------------------------
   # LAMBDA
@@ -627,6 +636,12 @@ Resources:
           Type: Api
           Properties:
             Path: /v1/user/assets/{assetId}
+            Method: GET
+            RestApiId: !Ref UserActionsAPIs
+        UserActionsAPIsGETv1userassetsprogress:
+          Type: Api
+          Properties:
+            Path: /v1/user/assets/progress
             Method: GET
             RestApiId: !Ref UserActionsAPIs
   EventDLQHandler:
@@ -1307,7 +1322,6 @@ Resources:
             IncludeSubdomains: true
             Preload: true
             Override: true
-
   OneHourCachePolicy:
     Type: AWS::CloudFront::CachePolicy
     Properties:
@@ -1324,13 +1338,6 @@ Resources:
             CookieBehavior: none
           QueryStringsConfig:
             QueryStringBehavior: none
-Outputs:
-  DistributionDomainName:
-    Description: CloudFront Distribution Domain Name
-    Value: !GetAtt ContentDistribution.DomainName
-  DistributionId:
-    Description: CloudFront Distribution ID
-    Value: !Ref ContentDistribution
 Metadata:
   AWS::Composer::Groups:
     Group:
@@ -1340,13 +1347,6 @@ Metadata:
         - UploadHandler
         - ContentRequestHandler
         - BackendFuncLogGroup
-    Group3:
-      Label: CDN
-      Members:
-        - ContentDistribution
-        - CloudFrontOriginAccessControl
-        - CORSPolicy
-        - CachePolicy
     Group4:
       Label: PROCESSING
       Members:
@@ -1360,15 +1360,11 @@ Metadata:
     Group5:
       Label: Processing Pipeline
       Members:
-        - TransportStorage
-        - ContentStorage
-        - MetadataStorage
         - Group8
         - Group9
         - Group10
-        - ContentStorageToCompletionQueuePermission
-        - TransportStorageToUploadEventQueuePermission
         - Group13
+        - MetadataStorage
     Group2:
       Label: Auth
       Members:
@@ -1381,6 +1377,7 @@ Metadata:
         - Group
         - Group2
         - Group12
+        - Group7
     Group8:
       Label: UPLOAD EVENT
       Members:
@@ -1411,3 +1408,17 @@ Metadata:
         - ValidationDLQHandler
         - EventDLQHandler
         - CompletionDLQHandler
+    Group3:
+      Label: CDN
+      Members:
+        - ContentDistribution
+        - CloudFrontOriginAccessControl
+        - CORSPolicy
+        - OneHourCachePolicy
+    Group7:
+      Label: STORAGE
+      Members:
+        - TransportStorage
+        - ContentStorage
+        - ContentStorageToCompletionQueuePermission
+        - TransportStorageToUploadEventQueuePermission
