@@ -49,6 +49,7 @@ const deleteObject = async (key:string):Promise<boolean> => {
     return response.$metadata.httpStatusCode === 204;
 };
 
+
 const getFileCount = async (prefix:string): Promise<number> => {
     const command = new ListObjectsV2Command({
         Bucket: objectServiceConfig.bucket,
