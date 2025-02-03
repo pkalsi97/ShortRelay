@@ -33,7 +33,7 @@ All these endpoints integrate with the Cognito user pool, which serves as the ce
 The User Actions APIs allow authenticated users to interact with the system. Key endpoints include:
 - `POST /v1/user/upload-request` to request an upload URL for submitting data
 - `GET /v1/user/assets/all` to retrieve a list of all the user's assets
-- `GET /v1/user/assets/{assetId}` to get details on a specific asset
+- `GET /v1/user/asset/{assetId}` to get details on a specific asset
 - `GET /v1/user/assets/progress` to check the progress of an asset upload or processing job
 
 ## Request Handlers

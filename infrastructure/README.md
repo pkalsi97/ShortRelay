@@ -56,7 +56,7 @@ Authentication endpoints:
 
 ### UserActionsAPIs
 User actions endpoints:  
-- `/v1/user/upload-request`, `/v1/user/assets/all`, `/v1/user/assets/{assetId}`
+- `/v1/user/upload-request`, `/v1/user/assets/all`, `/v1/user/asset/{assetId}`, `/v1/user/assets/progress`
 
 ## Lambda Functions
 
