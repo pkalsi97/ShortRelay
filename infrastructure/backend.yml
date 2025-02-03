@@ -280,6 +280,10 @@ Resources:
                     type: string
               security:
                 - Cognito-Auth: []
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ContentRequestHandler.Arn}/invocations
               responses: {}
 
   # -----------------------------------------------------------------------------------------------------------------------
