@@ -22,23 +22,6 @@ interface UploadResponse {
   };
 }
 
-interface ProgressResponse {
-  success: boolean;
-  message: string;
-  data: Array<{
-    createdAt: string;
-    updatedAt: string;
-    assetId: string;
-    progress: {
-      [key: string]: {
-        endTime?: string;
-        startTime: string;
-        status: string;
-        error: string;
-      };
-    };
-  }>;
-}
 
 type UploadStatus = 'idle' | 'validating' | 'requesting' | 'uploading' | 'complete' | 'error';
 
@@ -55,7 +38,25 @@ const STATUS_MESSAGES = {
   error: 'Upload failed'
 };
 
-const STAGES_ORDER = [
+type Stage = 
+  | 'upload'
+  | 'validation'
+  | 'metadata'
+  | 'accepted'
+  | 'download'
+  | 'writeToStorage'
+  | 'initializeProcessor'
+  | 'generateThumbnail'
+  | 'generateMP4Files'
+  | 'generateHLSPlaylists'
+  | 'generateIframePlaylists'
+  | 'uploadTranscodedFootage'
+  | 'postProcessingValidation'
+  | 'completion'
+  | 'Finished'
+  | 'Failed';
+
+const STAGES_ORDER: Stage[] = [
   'upload',
   'validation',
   'metadata',
@@ -73,8 +74,8 @@ const STAGES_ORDER = [
   'Finished'
 ];
 
-const STAGE_DISPLAY_NAMES = {
-  'upload': '📤 Uploading your video',
+const STAGE_DISPLAY_NAMES: Record<Stage, string> = {
+  'upload': '📤 Validating Upload',
   'validation': '🔍 Validating format',
   'metadata': '📋 Processing metadata',
   'accepted': '✅ Video accepted',
@@ -88,16 +89,42 @@ const STAGE_DISPLAY_NAMES = {
   'uploadTranscodedFootage': '🚀 Finalizing video',
   'postProcessingValidation': '🔎 Final checks',
   'completion': '🎉 Ready',
+  'Finished': '✨ Complete',
   'Failed': '❌ Processing failed',
 };
+
+const stageWeights: Record<Exclude<Stage, 'Finished' | 'Failed'>, number> = {
+  'upload': 7,
+  'validation': 14,
+  'metadata': 21,
+  'accepted': 28,
+  'download': 35,
+  'writeToStorage': 42,
+  'initializeProcessor': 49,
+  'generateThumbnail': 56,
+  'generateMP4Files': 63,
+  'generateHLSPlaylists': 70,
+  'generateIframePlaylists': 77,
+  'uploadTranscodedFootage': 84,
+  'postProcessingValidation': 91,
+  'completion': 100,
+};
+
+enum Progress {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  HOLD = 'HOLD',
+}
 
 interface ProgressResponse {
   success: boolean;
   message: string;
   data: Array<{
-    assetId: string;
     createdAt: string;
     updatedAt: string;
+    assetId: string;
+    hasCriticalFailure: boolean;
     progress: {
       [key: string]: {
         endTime?: string;
@@ -109,167 +136,184 @@ interface ProgressResponse {
   }>;
 }
 
+
 const ProgressSection = () => {
-  const [progressData, setProgressData] = useState<ProgressResponse['data']>([]);
-  const [isLoading, setIsLoading] = useState(false);
+const [progressData, setProgressData] = useState<ProgressResponse['data']>([]);
+const [, setIsLoading] = useState(false);
 
-  const fetchProgress = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const accessToken = authService.getAccessToken();
-      const idToken = authService.getIdToken();
+const fetchProgress = useCallback(async () => {
+  try {
+    setIsLoading(true);
+    const accessToken = authService.getAccessToken();
+    const idToken = authService.getIdToken();
 
-      if (!accessToken || !idToken) {
-        throw new Error('Authentication failed');
-      }
-
-      const response = await userApi.get<ProgressResponse>(
-        '/v1/user/assets/progress',
-        {
-          headers: {
-            'authorization': `Bearer ${idToken}`,
-            'x-access-token': `Bearer ${accessToken}`
-          }
-        }
-      );
-
-      if (response.success) {
-        setProgressData(response.data);
-      }
-    } catch (error) {
-      toast.error('Failed to fetch progress');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchProgress();
-    const interval = setInterval(fetchProgress, 10000);
-    return () => clearInterval(interval);
-  }, [fetchProgress]);
-
-  const getCurrentStageAndProgress = (progress: ProgressResponse['data'][0]['progress']) => {
-    let currentStage = '';
-    let progressPercentage = 0;
-    
-    const stageWeights = {
-      'upload': 7,
-      'validation': 14,
-      'metadata': 21,
-      'accepted': 28,
-      'download': 35,
-      'writeToStorage': 42,
-      'initializeProcessor': 49,
-      'generateThumbnail': 56,
-      'generateMP4Files': 63,
-      'generateHLSPlaylists': 70,
-      'generateIframePlaylists': 77,
-      'uploadTranscodedFootage': 84,
-      'postProcessingValidation': 91,
-      'completion': 100,
-    };
-
-    for (const stage of STAGES_ORDER) {
-      if (progress[stage]?.status === 'IN_PROGRESS') {
-        currentStage = stage;
-        progressPercentage = stageWeights[stage];
-        break;
-      }
+    if (!accessToken || !idToken) {
+      throw new Error('Authentication failed');
     }
 
-    if (!currentStage) {
-      for (let i = STAGES_ORDER.length - 1; i >= 0; i--) {
-        const stage = STAGES_ORDER[i];
-        if (progress[stage]?.status === 'COMPLETED') {
-          currentStage = stage;
-          progressPercentage = stageWeights[stage];
-          break;
+    const response = await userApi.get<ProgressResponse>(
+      '/v1/user/assets/progress',
+      {
+        headers: {
+          'authorization': `Bearer ${idToken}`,
+          'x-access-token': `Bearer ${accessToken}`
         }
       }
-    }
-
-    const hasFailedStage = Object.values(progress).some(
-      stage => stage?.status === 'FAILED'
     );
 
-    if (hasFailedStage) {
-      currentStage = 'Failed';
-      progressPercentage = 0;
+    if (response.success) {
+      setProgressData(response.data);
     }
+  } catch (error) {
+    console.error(error);
+    toast.error('Failed to fetch progress');
+  } finally {
+    setIsLoading(false);
+  }
+}, []);
 
-    return { currentStage, progressPercentage };
-  };
+useEffect(() => {
+  fetchProgress();
+  const interval = setInterval(fetchProgress, 10000);
+  return () => clearInterval(interval);
+}, [fetchProgress]);
 
-  if (isLoading && progressData.length === 0) {
-    return (
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold text-gray-200 mb-4">Processing Status</h2>
-        <div className="bg-gray-900/50 backdrop-blur-sm rounded-lg p-6 animate-pulse">
-          <div className="h-4 bg-gray-800 rounded w-1/4 mb-4"></div>
-          <div className="h-2 bg-gray-800 rounded w-full"></div>
-        </div>
-      </div>
+const getCurrentStageAndProgress = (
+  progress: ProgressResponse['data'][0]['progress'],
+  hasCriticalFailure: boolean = false
+) => {
+  let currentStage: Stage = 'upload';
+  let progressPercentage = 0;
+  let error = '';
+
+  const hasFailedStage = Object.entries(progress).some(
+    ([, data]) => data?.status === Progress.FAILED
+  );
+
+  if (hasFailedStage || hasCriticalFailure) {
+    currentStage = 'Failed';
+    progressPercentage = 0;
+    const failedStage = Object.entries(progress).find(
+      ([, data]) => data?.status === Progress.FAILED && data?.error && data?.error !== 'N.A'
     );
+    if (failedStage) {
+      error = failedStage[1].error;
+    }
+    return { currentStage, progressPercentage, error };
   }
 
-  return (
-    <div className="mt-8">
-      <h2 className="text-lg font-semibold text-gray-200 mb-4">Processing Status</h2>
-      {progressData.length > 0 ? (
-        <div className="space-y-4">
-          {[...progressData]
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            .map((item, index) => {
-              const { currentStage, progressPercentage } = getCurrentStageAndProgress(item.progress);
-              const isFinished = currentStage === 'Finished';
-              const isFailed = currentStage === 'Failed';
-
-              return (
-                <div key={index} className="bg-gray-900/50 backdrop-blur-sm rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <p className="text-xs text-gray-400">
-                        Asset ID: {item.assetId}
-                      </p>
-                      <p className="text-[10px] text-gray-500 mt-0.5">
-                        Started {format(new Date(item.createdAt), 'MMM dd, HH:mm:ss')}
-                      </p>
-                    </div>
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                            isFinished ? 'bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-cyan-400' : 
-                            isFailed ? 'bg-red-500/20 text-red-400' :
-                            'bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-purple-400'
-                            }`}>
-                            {STAGE_DISPLAY_NAMES[currentStage] || currentStage}
-                      </span>
-                  </div>
-                  <div className="relative h-1.5 bg-gray-800/50 rounded-full overflow-hidden">
-                    <div
-                      className={`absolute left-0 top-0 h-full transition-all duration-500 ease-out ${
-                        isFailed ? 'bg-red-500' : 'bg-gradient-to-r from-purple-500 to-cyan-500'
-                      }`}
-                      style={{ width: `${progressPercentage}%` }}
-                    />
-                  </div>
-                  <div className="mt-1 text-right">
-                    <span className="text-xs text-gray-400">
-                      {progressPercentage}%
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-      ) : (
-        <div className="text-center py-6 bg-gray-900/50 backdrop-blur-sm rounded-lg">
-          <p className="text-gray-400">No active processing</p>
-        </div>
-      )}
-    </div>
+  const isAllCompleted = STAGES_ORDER.slice(0, -1).every(stage => 
+    progress[stage]?.status === Progress.COMPLETED
   );
+
+  if (isAllCompleted) {
+    return {
+      currentStage: 'Finished',
+      progressPercentage: 100,
+      error: ''
+    };
+  }
+
+  let lastCompletedStage = '';
+  let foundCurrentStage = false;
+
+  for (const stage of STAGES_ORDER) {
+    if (!progress[stage]) continue;
+
+    if (progress[stage].status === Progress.FAILED && progress[stage].error && progress[stage].error !== 'N.A') {
+      currentStage = stage;
+      error = progress[stage].error;
+      progressPercentage = stageWeights[stage as keyof typeof stageWeights] ?? 0;
+      foundCurrentStage = true;
+      break;
+    }
+
+    if (progress[stage].status === Progress.COMPLETED) {
+      lastCompletedStage = stage;
+      if (!foundCurrentStage) {
+        progressPercentage = stageWeights[stage as keyof typeof stageWeights] ?? 0;
+      }
+    } else if (progress[stage].status === Progress.PENDING || progress[stage].status === Progress.HOLD) {
+      currentStage = stage;
+      progressPercentage = stageWeights[stage as keyof typeof stageWeights] ?? 0;
+      foundCurrentStage = true;
+      break;
+    }
+  }
+
+  if (!foundCurrentStage && lastCompletedStage) {
+    currentStage = lastCompletedStage;
+  }
+
+  return { currentStage, progressPercentage, error };
 };
 
+return (
+  <div className="mt-8">
+    <h2 className="text-lg font-semibold text-gray-200 mb-4">Processing Status</h2>
+    {progressData.length > 0 ? (
+      <div className="space-y-4">
+        {[...progressData]
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .map((item, index) => {
+            const { currentStage, progressPercentage, error } = getCurrentStageAndProgress(
+              item.progress, 
+              item.hasCriticalFailure
+            );
+            const isFinished = currentStage === 'Finished';
+            const isFailed = currentStage === 'Failed';
+
+            return (
+              <div key={index} className="bg-gray-900/80 backdrop-blur-sm rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-sm text-gray-300">
+                      Asset ID: {item.assetId}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Started {format(new Date(item.createdAt), 'MMM dd, HH:mm:ss')}
+                    </p>
+                  </div>
+                  <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                    isFinished ? 'bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-cyan-400' : 
+                    isFailed ? 'bg-red-500/20 text-red-400' :
+                    'bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-purple-400'
+                  }`}>
+                    {STAGE_DISPLAY_NAMES[currentStage]}
+                  </span>
+                </div>
+
+                {error && (
+                  <p className="text-xs text-red-400 mb-3">
+                    {error}
+                  </p>
+                )}
+
+                <div className="relative h-1 bg-gray-800/50 rounded-full overflow-hidden">
+                  <div
+                    className={`absolute left-0 top-0 h-full transition-all duration-500 ease-out ${
+                      isFailed ? 'bg-red-500' : 'bg-gradient-to-r from-purple-500 to-cyan-500'
+                    }`}
+                    style={{ width: `${progressPercentage}%` }}
+                  />
+                </div>
+                <div className="mt-1 text-right">
+                  <span className="text-xs text-gray-400">
+                    {progressPercentage}%
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    ) : (
+      <div className="text-center py-6 bg-gray-900/80 backdrop-blur-sm rounded-lg">
+        <p className="text-gray-400">No active processing</p>
+      </div>
+    )}
+  </div>
+);
+}
 export default function Upload() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
