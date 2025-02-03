@@ -6,7 +6,6 @@ import { DbConfig } from '../types/db.types';
 import { Request, Response } from '../types/request-response.types';
 import { Fault, CustomError, ErrorName, exceptionHandlerFunction } from '../utils/error-handling';
 import { ValidationField, ValidationResponse, RequestValidator } from '../utils/request-validator';
-import { request } from 'node:http';
 
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,

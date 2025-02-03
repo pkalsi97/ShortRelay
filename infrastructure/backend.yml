@@ -478,8 +478,8 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt TaskQueue.Arn
-            BatchSize: 4
-            MaximumBatchingWindowInSeconds: 1
+            BatchSize: 16
+            MaximumBatchingWindowInSeconds: 10
       Environment:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
