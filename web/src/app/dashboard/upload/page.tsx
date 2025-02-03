@@ -242,7 +242,7 @@ const getCurrentStageAndProgress = (
   }
 
   if (!foundCurrentStage && lastCompletedStage) {
-    currentStage = lastCompletedStage;
+    currentStage = lastCompletedStage as Stage;
   }
 
   return { currentStage, progressPercentage, error };
@@ -279,7 +279,7 @@ return (
                     isFailed ? 'bg-red-500/20 text-red-400' :
                     'bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-purple-400'
                   }`}>
-                    {STAGE_DISPLAY_NAMES[currentStage]}
+                    {STAGE_DISPLAY_NAMES[currentStage as Stage]}
                   </span>
                 </div>
 
