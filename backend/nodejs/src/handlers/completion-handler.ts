@@ -97,7 +97,7 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                                     await MetadataService.updateProgress(
                                         owner,
                                         ProcessingStage.Completion,
-                                        'Finished',
+                                        ProcessingStage.Finished,
                                         {
                                             status: Progress.COMPLETED,
                                             startTime: completionStart,
@@ -108,7 +108,7 @@ export const completionHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                                     await MetadataService.updateProgress(
                                         owner,
                                         ProcessingStage.Completion,
-                                        'Finished',
+                                        ProcessingStage.Finished,
                                         {
                                             status: Progress.HOLD,
                                             startTime: completionStart,
