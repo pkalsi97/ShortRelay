@@ -272,10 +272,12 @@ const getAllAssetsProgress = async (userId: string): Promise<Record<string, any>
     const command = new QueryCommand({
         TableName: dbConfig.table,
         KeyConditionExpression: 'userId = :userId',
-        ProjectionExpression: 'createdAt, updatedAt, progress',
+        ProjectionExpression: 'createdAt, updatedAt, progress, assetId',
         ExpressionAttributeValues: {
             ':userId': { S: userId }
         },
+        ScanIndexForward: false,
+        Limit: 10
     });
 
     const response = await dbClient.send(command);
