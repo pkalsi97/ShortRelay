@@ -6,7 +6,8 @@ Tech Stack:
 - Backend components (Lambdas) use TypeScript, Node.js, and AWS SDK v3
 - Workers are built with Go, utilizing FFmpeg, FFprobe, and AWS SDK v2
 - Frontend is developed using Next.js
-  ***
+
+# Pipeline
 ![alt text](./infrastructure/docs/asset-processing-flow.png)
 
 ## APIs
