@@ -272,6 +272,12 @@ Resources:
               responses: {}
           /v1/user/asset/{assetId}:
             get:
+              parameters:
+                - name: assetId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
               security:
                 - Cognito-Auth: []
               x-amazon-apigateway-integration:

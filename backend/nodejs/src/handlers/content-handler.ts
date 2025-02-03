@@ -88,12 +88,6 @@ const getAllAssetsProgress = async(request:Request): Promise<Response> => {
         throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
     }
 
-    const assetId = request.parameters?.assetId;
-    if (!assetId) {
-        throw new CustomError(
-            ErrorName.ValidationError, 'Asset ID is required', 400, Fault.CLIENT, true);
-    }
-
     const token = request.headers?.['x-access-token'];
     const accessToken = token?.slice(7)!;
     const userId = await IdentityService.getUser(accessToken);
