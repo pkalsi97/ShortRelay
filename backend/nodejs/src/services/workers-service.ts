@@ -72,7 +72,7 @@ const assignJob = async (tasks: Task[]): Promise<boolean> => {
                         name: 'processor',
                         environment: [
                             {
-                                name: 'BATCH_TASK',
+                                name: 'BATCH_TASKS',
                                 value: JSON.stringify(tasks.map(task => ({
                                     taskId: task.taskId,
                                     userId: task.userId,
@@ -100,4 +100,3 @@ export const  WorkerService = {
     canJobBeAssigned,
     assignJob,
 };
-
