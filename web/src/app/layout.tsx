@@ -12,7 +12,8 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'ShortRelay',
     description: 'Serverless Video Processing Pipeline',
-    url: 'https://shortrelay.dev',
+    // Remove url or use placeholder
+    // url: 'https://future-domain.com',
     siteName: 'ShortRelay',
     locale: 'en_US',
     type: 'website',

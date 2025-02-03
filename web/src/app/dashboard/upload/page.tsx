@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
 import { CloudArrowUpIcon } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
 import { userApi } from '@/utils/api-client';
 import { API_ROUTES } from '@/config/api.config';
 import { authService } from '@/utils/auth.service';
+import { format } from 'date-fns';
 
 interface UploadResponse {
   url: string;
@@ -22,10 +22,11 @@ interface UploadResponse {
   };
 }
 
+
 type UploadStatus = 'idle' | 'validating' | 'requesting' | 'uploading' | 'complete' | 'error';
 
 const ACCEPTED_FORMATS = ['video/mp4', 'video/quicktime', 'video/webm'];
-const MAX_FILE_SIZE_MB = 100;
+const MAX_FILE_SIZE_MB = 120;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const STATUS_MESSAGES = {
@@ -37,8 +38,283 @@ const STATUS_MESSAGES = {
   error: 'Upload failed'
 };
 
+type Stage = 
+  | 'upload'
+  | 'validation'
+  | 'metadata'
+  | 'accepted'
+  | 'download'
+  | 'writeToStorage'
+  | 'initializeProcessor'
+  | 'generateThumbnail'
+  | 'generateMP4Files'
+  | 'generateHLSPlaylists'
+  | 'generateIframePlaylists'
+  | 'uploadTranscodedFootage'
+  | 'postProcessingValidation'
+  | 'completion'
+  | 'Finished'
+  | 'Failed';
+
+const STAGES_ORDER: Stage[] = [
+  'upload',
+  'validation',
+  'metadata',
+  'accepted',
+  'download',
+  'writeToStorage',
+  'initializeProcessor',
+  'generateThumbnail',
+  'generateMP4Files',
+  'generateHLSPlaylists',
+  'generateIframePlaylists',
+  'uploadTranscodedFootage',
+  'postProcessingValidation',
+  'completion',
+  'Finished'
+];
+
+const STAGE_DISPLAY_NAMES: Record<Stage, string> = {
+  'upload': '📤 Validating Upload',
+  'validation': '🔍 Validating format',
+  'metadata': '📋 Processing metadata',
+  'accepted': '✅ Video accepted',
+  'download': '⬇️ Preparing video',
+  'writeToStorage': '💾 Saving to storage',
+  'initializeProcessor': '🎬 Initializing processor',
+  'generateThumbnail': '🖼️ Creating thumbnail',
+  'generateMP4Files': '🎥 Converting format',
+  'generateHLSPlaylists': '📱 Optimizing for streaming',
+  'generateIframePlaylists': '⚡ Creating previews',
+  'uploadTranscodedFootage': '🚀 Finalizing video',
+  'postProcessingValidation': '🔎 Final checks',
+  'completion': '🎉 Ready',
+  'Finished': '✨ Complete',
+  'Failed': '❌ Processing failed',
+};
+
+const stageWeights: Record<Exclude<Stage, 'Finished' | 'Failed'>, number> = {
+  'upload': 7,
+  'validation': 14,
+  'metadata': 21,
+  'accepted': 28,
+  'download': 35,
+  'writeToStorage': 42,
+  'initializeProcessor': 49,
+  'generateThumbnail': 56,
+  'generateMP4Files': 63,
+  'generateHLSPlaylists': 70,
+  'generateIframePlaylists': 77,
+  'uploadTranscodedFootage': 84,
+  'postProcessingValidation': 91,
+  'completion': 100,
+};
+
+enum Progress {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  HOLD = 'HOLD',
+}
+
+interface ProgressResponse {
+  success: boolean;
+  message: string;
+  data: Array<{
+    createdAt: string;
+    updatedAt: string;
+    assetId: string;
+    hasCriticalFailure: boolean;
+    progress: {
+      [key: string]: {
+        endTime?: string;
+        startTime: string;
+        status: string;
+        error: string;
+      };
+    };
+  }>;
+}
+
+
+const ProgressSection = () => {
+const [progressData, setProgressData] = useState<ProgressResponse['data']>([]);
+const [, setIsLoading] = useState(false);
+
+const fetchProgress = useCallback(async () => {
+  try {
+    setIsLoading(true);
+    const accessToken = authService.getAccessToken();
+    const idToken = authService.getIdToken();
+
+    if (!accessToken || !idToken) {
+      throw new Error('Authentication failed');
+    }
+
+    const response = await userApi.get<ProgressResponse>(
+      '/v1/user/assets/progress',
+      {
+        headers: {
+          'authorization': `Bearer ${idToken}`,
+          'x-access-token': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (response.success) {
+      setProgressData(response.data);
+    }
+  } catch (error) {
+    console.error(error);
+    toast.error('Failed to fetch progress');
+  } finally {
+    setIsLoading(false);
+  }
+}, []);
+
+useEffect(() => {
+  fetchProgress();
+  const interval = setInterval(fetchProgress, 10000);
+  return () => clearInterval(interval);
+}, [fetchProgress]);
+
+const getCurrentStageAndProgress = (
+  progress: ProgressResponse['data'][0]['progress'],
+  hasCriticalFailure: boolean = false
+) => {
+  let currentStage: Stage = 'upload';
+  let progressPercentage = 0;
+  let error = '';
+
+  const hasFailedStage = Object.entries(progress).some(
+    ([, data]) => data?.status === Progress.FAILED
+  );
+
+  if (hasFailedStage || hasCriticalFailure) {
+    currentStage = 'Failed';
+    progressPercentage = 0;
+    const failedStage = Object.entries(progress).find(
+      ([, data]) => data?.status === Progress.FAILED && data?.error && data?.error !== 'N.A'
+    );
+    if (failedStage) {
+      error = failedStage[1].error;
+    }
+    return { currentStage, progressPercentage, error };
+  }
+
+  const isAllCompleted = STAGES_ORDER.slice(0, -1).every(stage => 
+    progress[stage]?.status === Progress.COMPLETED
+  );
+
+  if (isAllCompleted) {
+    return {
+      currentStage: 'Finished',
+      progressPercentage: 100,
+      error: ''
+    };
+  }
+
+  let lastCompletedStage = '';
+  let foundCurrentStage = false;
+
+  for (const stage of STAGES_ORDER) {
+    if (!progress[stage]) continue;
+
+    if (progress[stage].status === Progress.FAILED && progress[stage].error && progress[stage].error !== 'N.A') {
+      currentStage = stage;
+      error = progress[stage].error;
+      progressPercentage = stageWeights[stage as keyof typeof stageWeights] ?? 0;
+      foundCurrentStage = true;
+      break;
+    }
+
+    if (progress[stage].status === Progress.COMPLETED) {
+      lastCompletedStage = stage;
+      if (!foundCurrentStage) {
+        progressPercentage = stageWeights[stage as keyof typeof stageWeights] ?? 0;
+      }
+    } else if (progress[stage].status === Progress.PENDING || progress[stage].status === Progress.HOLD) {
+      currentStage = stage;
+      progressPercentage = stageWeights[stage as keyof typeof stageWeights] ?? 0;
+      foundCurrentStage = true;
+      break;
+    }
+  }
+
+  if (!foundCurrentStage && lastCompletedStage) {
+    currentStage = lastCompletedStage as Stage;
+  }
+
+  return { currentStage, progressPercentage, error };
+};
+
+return (
+  <div className="mt-8">
+    <h2 className="text-lg font-semibold text-gray-200 mb-4">Processing Status</h2>
+    {progressData.length > 0 ? (
+      <div className="space-y-4">
+        {[...progressData]
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .map((item, index) => {
+            const { currentStage, progressPercentage, error } = getCurrentStageAndProgress(
+              item.progress, 
+              item.hasCriticalFailure
+            );
+            const isFinished = currentStage === 'Finished';
+            const isFailed = currentStage === 'Failed';
+
+            return (
+              <div key={index} className="bg-gray-900/80 backdrop-blur-sm rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-sm text-gray-300">
+                      Asset ID: {item.assetId}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Started {format(new Date(item.createdAt), 'MMM dd, HH:mm:ss')}
+                    </p>
+                  </div>
+                  <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                    isFinished ? 'bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-cyan-400' : 
+                    isFailed ? 'bg-red-500/20 text-red-400' :
+                    'bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-purple-400'
+                  }`}>
+                    {STAGE_DISPLAY_NAMES[currentStage as Stage]}
+                  </span>
+                </div>
+
+                {error && (
+                  <p className="text-xs text-red-400 mb-3">
+                    {error}
+                  </p>
+                )}
+
+                <div className="relative h-1 bg-gray-800/50 rounded-full overflow-hidden">
+                  <div
+                    className={`absolute left-0 top-0 h-full transition-all duration-500 ease-out ${
+                      isFailed ? 'bg-red-500' : 'bg-gradient-to-r from-purple-500 to-cyan-500'
+                    }`}
+                    style={{ width: `${progressPercentage}%` }}
+                  />
+                </div>
+                <div className="mt-1 text-right">
+                  <span className="text-xs text-gray-400">
+                    {progressPercentage}%
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    ) : (
+      <div className="text-center py-6 bg-gray-900/80 backdrop-blur-sm rounded-lg">
+        <p className="text-gray-400">No active processing</p>
+      </div>
+    )}
+  </div>
+);
+}
 export default function Upload() {
-  const router = useRouter();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle');
@@ -83,36 +359,36 @@ export default function Upload() {
 
   const uploadToS3 = async (file: File, uploadData: UploadResponse): Promise<boolean> => {
     return new Promise((resolve) => {
-        const formData = new FormData();
-        
-        Object.entries(uploadData.fields).forEach(([key, value]) => {
-            formData.append(key, value);
-        });
+      const formData = new FormData();
+      
+      Object.entries(uploadData.fields).forEach(([key, value]) => {
+        formData.append(key, value);
+      });
 
-        formData.append('file', file);
+      formData.append('file', file);
 
-        const xhr = new XMLHttpRequest();
-        
-        xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-                const progress = Math.round((event.loaded * 100) / event.total);
-                setUploadProgress(progress);
-            }
-        };
-        
-        xhr.open('POST', uploadData.url, true);
-        
-        xhr.onload = () => {
-            resolve(xhr.status === 204);
-        };
+      const xhr = new XMLHttpRequest();
+      
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded * 100) / event.total);
+          setUploadProgress(progress);
+        }
+      };
+      
+      xhr.open('POST', uploadData.url, true);
+      
+      xhr.onload = () => {
+        resolve(xhr.status === 204);
+      };
 
-        xhr.onerror = () => {
-            resolve(true);
-        };
-        
-        xhr.send(formData);
+      xhr.onerror = () => {
+        resolve(false);
+      };
+      
+      xhr.send(formData);
     });
-};
+  };
 
   const handleRequestUpload = async () => {
     if (!selectedFile) {
@@ -166,7 +442,8 @@ export default function Upload() {
         toast.success('Video uploaded successfully!');
         setTimeout(() => {
           setSelectedFile(null);
-          router.push('/dashboard/library');
+          setUploadStatus('idle');
+          setUploadProgress(0);
         }, 1000);
       } else {
         setUploadStatus('error');
@@ -181,9 +458,8 @@ export default function Upload() {
       setIsLoading(false);
     }
   };
-
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto pb-20">
       <h1 className="text-2xl md:text-3xl font-bold text-gray-100">
         Upload Video
       </h1>
@@ -209,7 +485,6 @@ export default function Upload() {
                 up to {MAX_FILE_SIZE_MB}MB
               </p>
               
-              {/* Show file name immediately after selection */}
               {selectedFile && (
                 <div className="mt-4 animate-fade-in">
                   <p className="text-sm text-gray-400 break-all">
@@ -218,7 +493,6 @@ export default function Upload() {
                 </div>
               )}
 
-              {/* Show upload status only when uploading */}
               {uploadStatus !== 'idle' && uploadStatus !== 'validating' && (
                 <div className="mt-4 animate-fade-in">
                   <p className="text-sm text-gray-400">
@@ -240,7 +514,6 @@ export default function Upload() {
             </div>
           </div>
 
-          {/* Show upload button when file is selected and not uploading */}
           {selectedFile && !isLoading && (
             <div className="mt-6 animate-fade-in">
               <button
@@ -252,7 +525,6 @@ export default function Upload() {
             </div>
           )}
 
-          {/* Show loading button when uploading */}
           {isLoading && (
             <div className="mt-6 animate-fade-in">
               <button
@@ -265,6 +537,9 @@ export default function Upload() {
             </div>
           )}
         </div>
+
+        {/* Add the Progress Section */}
+        <ProgressSection />
       </div>
     </div>
   );

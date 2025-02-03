@@ -15,6 +15,8 @@ Globals:
         TRANSPORTSTORAGE_BUCKET_NAME: !Ref TransportStorage
         ALLOWED_ORIGIN: !Ref AllowedOrigin
         AES_KEY_UTIL: !Ref AesKeyUtil
+        FFMPEG_PATH: /opt/ffmpeg/ffmpeg
+        FFPROBE_PATH: /opt/ffmpeg/ffprobe
     LoggingConfig:
       ApplicationLogLevel: WARN
       LogFormat: JSON
@@ -30,7 +32,7 @@ Globals:
     Cors:
       AllowOrigin: !Sub '''${AllowedOrigin}'''
       AllowHeaders: '''Content-Type, Authorization, X-Access-Token'''
-      AllowMethods: '''POST'''
+      AllowMethods: '''OPTIONS,POST,GET'''
       MaxAge: 5
     MethodSettings:
       - ResourcePath: /*
@@ -59,12 +61,30 @@ Parameters:
   TransportExpiryDays:
     Type: Number
     Description: File Expiry Days for Transport
+  ContentExpiryDays:
+    Type: Number
+    Description: File Expiry Days for Content
   AllowedOrigin:
     Type: String
     Description: Allowed CORS
   AesKeyUtil:
     Type: String
     Description: AES Key of encryption
+  DefaultVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Default VPC ID
+  DefaultSubnetIds:
+    Type: String
+    Description: Comma-separated list of subnet IDs
+  DefaultSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Default Security Group ID for ECS Tasks
+  FargateTaskLimit:
+    Type: String
+    Description: Maximum number of concurrent fargate task
+  CompletionTrigger:
+    Type: String
+    Description: S3 event filter used in CompletionQueue Notifications sent by S3
   Environment:
     Type: String
     Description: Deployment Environment
@@ -232,6 +252,40 @@ Resources:
                 type: aws_proxy
                 uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UploadHandler.Arn}/invocations
               responses: {}
+          /v1/user/assets/all:
+            get:
+              security:
+                - Cognito-Auth: []
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ContentRequestHandler.Arn}/invocations
+              responses: {}
+          /v1/user/assets/progress:
+            get:
+              security:
+                - Cognito-Auth: []
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ContentRequestHandler.Arn}/invocations
+              responses: {}
+          /v1/user/asset/{assetId}:
+            get:
+              parameters:
+                - name: assetId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+              security:
+                - Cognito-Auth: []
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ContentRequestHandler.Arn}/invocations
+              responses: {}
+
   # -----------------------------------------------------------------------------------------------------------------------
   # LAMBDA
   # -----------------------------------------------------------------------------------------------------------------------
@@ -338,6 +392,8 @@ Resources:
               Resource:
                 - !Sub arn:${AWS::Partition}:s3:::${TransportStorage}
                 - !Sub arn:${AWS::Partition}:s3:::${TransportStorage}/*
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataStorage
       Events:
         UserActionsAPIsPOSTv1useruploadrequest:
           Type: Api
@@ -349,6 +405,8 @@ Resources:
         Variables:
           TRANSPORTSTORAGE_BUCKET_NAME: !Ref TransportStorage
           TRANSPORTSTORAGE_BUCKET_ARN: !GetAtt TransportStorage.Arn
+          METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
+          METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
   EventHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -356,8 +414,8 @@ Resources:
       CodeUri: ./dist
       Handler: handlers/event-handler.eventHandler
       Runtime: nodejs18.x
-      MemorySize: 2024
-      Timeout: 120
+      MemorySize: 2048
+      Timeout: 30
       Tracing: Active
       Architectures:
         - arm64
@@ -367,21 +425,21 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref MetadataStorage
         - SQSSendMessagePolicy:
-            QueueName: !GetAtt TaskQueue.QueueName
+            QueueName: !GetAtt ValidationQueue.QueueName
       Events:
         UploadEventQueue:
           Type: SQS
           Properties:
             Queue: !GetAtt UploadEventQueue.Arn
-            BatchSize: 5
-            MaximumBatchingWindowInSeconds: 15
+            BatchSize: 4
+            MaximumBatchingWindowInSeconds: 2
       Environment:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
-          TASKQUEUE_QUEUE_NAME: !GetAtt TaskQueue.QueueName
-          TASKQUEUE_QUEUE_ARN: !GetAtt TaskQueue.Arn
-          TASKQUEUE_QUEUE_URL: !Ref TaskQueue
+          VALIDATIONQUEUE_QUEUE_NAME: !GetAtt ValidationQueue.QueueName
+          VALIDATIONQUEUE_QUEUE_ARN: !GetAtt ValidationQueue.Arn
+          VALIDATIONQUEUE_QUEUE_URL: !Ref ValidationQueue
   TaskHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -390,6 +448,56 @@ Resources:
       Handler: handlers/task-handler.taskHandler
       Runtime: nodejs18.x
       MemorySize: 1024
+      Timeout: 30
+      Tracing: Active
+      Architectures:
+        - arm64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXrayWriteOnlyAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataStorage
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ecs:ListTasks
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - ecs:RunTask
+                - ecs:StopTask
+                - ecs:DescribeTasks
+                - iam:PassRole
+              Resource:
+                - !Ref ProcessorTaskDefinition
+                - !GetAtt WorkerCluster.Arn
+                - !GetAtt TaskExecutionRole.Arn
+                - !GetAtt ProcessorTaskRole.Arn
+      Events:
+        TaskQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TaskQueue.Arn
+            BatchSize: 4
+            MaximumBatchingWindowInSeconds: 1
+      Environment:
+        Variables:
+          METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
+          METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+          ECS_CLUSTER: !Ref WorkerCluster
+          PROCESSOR_TASK_DEFINITION: !Ref ProcessorTaskDefinition
+          VPC_ID: !Ref DefaultVpcId
+          SECURITY_GROUP_ID: !Ref DefaultSecurityGroupId
+          SUBNET_IDS: !Ref DefaultSubnetIds
+          FARGATE_TASK_LIMIT: !Ref FargateTaskLimit
+  CompletionHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Completion Handler
+      CodeUri: ./dist
+      Handler: handlers/completion-handler.completionHandler
+      Runtime: nodejs18.x
+      MemorySize: 2048
       Timeout: 60
       Tracing: Active
       Architectures:
@@ -402,35 +510,112 @@ Resources:
         - Statement:
             - Effect: Allow
               Action:
-                - ecs:RunTask
-                - ecs:StopTask
-                - ecs:DescribeTasks
-                - ecs:ListTasks
+                - s3:GetObject
+                - s3:GetObjectAcl
+                - s3:GetObjectLegalHold
+                - s3:GetObjectRetention
+                - s3:GetObjectTorrent
+                - s3:GetObjectVersion
+                - s3:GetObjectVersionAcl
+                - s3:GetObjectVersionForReplication
+                - s3:GetObjectVersionTorrent
+                - s3:ListBucket
+                - s3:ListBucketMultipartUploads
+                - s3:ListBucketVersions
+                - s3:ListMultipartUploadParts
+                - s3:AbortMultipartUpload
+                - s3:DeleteObject
+                - s3:DeleteObjectVersion
+                - s3:PutObject
+                - s3:PutObjectLegalHold
+                - s3:PutObjectRetention
+                - s3:RestoreObject
               Resource:
-                - !Ref ProcessorTaskDefinition
-                - !GetAtt WorkerCluster.Arn
+                - !Sub arn:${AWS::Partition}:s3:::${ContentStorage}
+                - !Sub arn:${AWS::Partition}:s3:::${ContentStorage}/*
       Events:
-        TaskQueue:
+        CompletionQueue:
           Type: SQS
           Properties:
-            Queue: !GetAtt TaskQueue.Arn
-            BatchSize: 3
-            MaximumBatchingWindowInSeconds: 30
+            Queue: !GetAtt CompletionQueue.Arn
+            BatchSize: 5
+            MaximumBatchingWindowInSeconds: 1
       Environment:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
-          ECS_CLUSTER: !Ref WorkerCluster
-          PROCESSOR_TASK_DEFINITION: !Ref ProcessorTaskDefinition
-          SUBNET_ID: !Ref PublicSubnet
-          SECURITY_GROUP_ID: !Ref WorkerSecurityGroup
-          VPC_ID: !Ref WorkerVPC
-  CompletionHandler:
+          CONTENTSTORAGE_BUCKET_NAME: !Ref ContentStorage
+          CONTENTSTORAGE_BUCKET_ARN: !GetAtt ContentStorage.Arn
+          CDN_DOMAIN: !GetAtt ContentDistribution.DomainName
+  ValidationHandler:
     Type: AWS::Serverless::Function
     Properties:
-      Description: Completion Handler
+      Description: Validation Handler
       CodeUri: ./dist
-      Handler: handlers/completion-handler.completionHandler
+      Handler: handlers/validation-handler.validationHandler
+      Runtime: nodejs18.x
+      MemorySize: 3000
+      Timeout: 30
+      Tracing: Active
+      Architectures:
+        - arm64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXrayWriteOnlyAccess
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt TaskQueue.QueueName
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataStorage
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:GetObjectAcl
+                - s3:GetObjectLegalHold
+                - s3:GetObjectRetention
+                - s3:GetObjectTorrent
+                - s3:GetObjectVersion
+                - s3:GetObjectVersionAcl
+                - s3:GetObjectVersionForReplication
+                - s3:GetObjectVersionTorrent
+                - s3:ListBucket
+                - s3:ListBucketMultipartUploads
+                - s3:ListBucketVersions
+                - s3:ListMultipartUploadParts
+                - s3:AbortMultipartUpload
+                - s3:DeleteObject
+                - s3:DeleteObjectVersion
+                - s3:PutObject
+                - s3:PutObjectLegalHold
+                - s3:PutObjectRetention
+                - s3:RestoreObject
+              Resource:
+                - !Sub arn:${AWS::Partition}:s3:::${TransportStorage}
+                - !Sub arn:${AWS::Partition}:s3:::${TransportStorage}/*
+      Layers:
+        - !Ref ResourceLayer
+      Events:
+        ValidationQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ValidationQueue.Arn
+            BatchSize: 3
+            MaximumBatchingWindowInSeconds: 1
+      Environment:
+        Variables:
+          TASKQUEUE_QUEUE_NAME: !GetAtt TaskQueue.QueueName
+          TASKQUEUE_QUEUE_ARN: !GetAtt TaskQueue.Arn
+          TASKQUEUE_QUEUE_URL: !Ref TaskQueue
+          METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
+          METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+          TRANSPORTSTORAGE_BUCKET_NAME: !Ref TransportStorage
+          TRANSPORTSTORAGE_BUCKET_ARN: !GetAtt TransportStorage.Arn
+  ContentRequestHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: ContentRequest Handler
+      CodeUri: ./dist
+      Handler: handlers/content-handler.contentRequestHandler
       Runtime: nodejs18.x
       MemorySize: 2048
       Timeout: 120
@@ -442,17 +627,179 @@ Resources:
         - AWSXrayWriteOnlyAccess
         - DynamoDBCrudPolicy:
             TableName: !Ref MetadataStorage
-      Events:
-        CompletionQueue:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt CompletionQueue.Arn
-            BatchSize: 5
-            MaximumBatchingWindowInSeconds: 5
       Environment:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
           METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+      Events:
+        UserActionsAPIsGETv1userassetsall:
+          Type: Api
+          Properties:
+            Path: /v1/user/assets/all
+            Method: GET
+            RestApiId: !Ref UserActionsAPIs
+        UserActionsAPIsGETv1userassetsprogress:
+          Type: Api
+          Properties:
+            Path: /v1/user/assets/progress
+            Method: GET
+            RestApiId: !Ref UserActionsAPIs
+        UserActionsAPIsGETv1userassetassetId:
+          Type: Api
+          Properties:
+            Path: /v1/user/asset/{assetId}
+            Method: GET
+            RestApiId: !Ref UserActionsAPIs
+  EventDLQHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Event DLQ Management
+      CodeUri: ./dist
+      Handler: handlers/dlq/event-dlq-handler.eventDLQHandler
+      Runtime: nodejs18.x
+      MemorySize: 256
+      Timeout: 60
+      Tracing: Active
+      Architectures:
+        - arm64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXrayWriteOnlyAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataStorage
+      Environment:
+        Variables:
+          METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
+          METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+      Events:
+        UploadDLQ:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt UploadDLQ.Arn
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 1
+  ValidationDLQHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Validation DLQ Management
+      CodeUri: ./dist
+      Handler: handlers/dlq/validation-dlq-handler.validationDLQHandler
+      Runtime: nodejs18.x
+      MemorySize: 256
+      Timeout: 60
+      Tracing: Active
+      Architectures:
+        - arm64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXrayWriteOnlyAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataStorage
+      Environment:
+        Variables:
+          METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
+          METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+      Events:
+        ValidationDLQ:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ValidationDLQ.Arn
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 1
+  CompletionDLQHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Completion DLQ Management
+      CodeUri: ./dist
+      Handler: handlers/dlq/completion-dlq-handler.completionDLQHandler
+      Runtime: nodejs18.x
+      MemorySize: 512
+      Timeout: 60
+      Tracing: Active
+      Architectures:
+        - arm64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXrayWriteOnlyAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataStorage
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:GetObjectAcl
+                - s3:GetObjectLegalHold
+                - s3:GetObjectRetention
+                - s3:GetObjectTorrent
+                - s3:GetObjectVersion
+                - s3:GetObjectVersionAcl
+                - s3:GetObjectVersionForReplication
+                - s3:GetObjectVersionTorrent
+                - s3:ListBucket
+                - s3:ListBucketMultipartUploads
+                - s3:ListBucketVersions
+                - s3:ListMultipartUploadParts
+                - s3:AbortMultipartUpload
+                - s3:DeleteObject
+                - s3:DeleteObjectVersion
+                - s3:PutObject
+                - s3:PutObjectLegalHold
+                - s3:PutObjectRetention
+                - s3:RestoreObject
+              Resource:
+                - !Sub arn:${AWS::Partition}:s3:::${ContentStorage}
+                - !Sub arn:${AWS::Partition}:s3:::${ContentStorage}/*
+      Environment:
+        Variables:
+          METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
+          METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+          CONTENTSTORAGE_BUCKET_NAME: !Ref ContentStorage
+          CONTENTSTORAGE_BUCKET_ARN: !GetAtt ContentStorage.Arn
+      Events:
+        CompletionDLQ:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt CompletionDLQ.Arn
+            BatchSize: 1
+  TaskDLQHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Task DLQ Management
+      CodeUri: ./dist
+      Handler: handlers/dlq/task-dlq-handler.taskDLQHandler
+      Runtime: nodejs18.x
+      MemorySize: 256
+      Timeout: 60
+      Tracing: Active
+      Architectures:
+        - arm64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXrayWriteOnlyAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataStorage
+      Events:
+        TaskDLQ:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TaskDLQ.Arn
+            BatchSize: 4
+            MaximumBatchingWindowInSeconds: 1
+      Environment:
+        Variables:
+          METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
+          METADATASTORAGE_TABLE_ARN: !GetAtt MetadataStorage.Arn
+  # Master resource layer for all lambdas
+  ResourceLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Layer ${ResourceName}
+        - ResourceName: ResourceLayer
+      ContentUri: ./resource-layer.zip
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: nodejs18.x
   # -----------------------------------------------------------------------------------------------------------------------
   # STORAGE
   # -----------------------------------------------------------------------------------------------------------------------
@@ -511,14 +858,22 @@ Resources:
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
-              SSEAlgorithm: aws:kms
-              KMSMasterKeyID: alias/aws/s3
+              SSEAlgorithm: AES256
       PublicAccessBlockConfiguration:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            ExpirationInDays: !Ref ContentExpiryDays
       NotificationConfiguration:
         QueueConfigurations:
-          - Event: s3:ObjectCreated:Post
+          - Event: s3:ObjectCreated:Put
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: !Ref CompletionTrigger
             Queue: !GetAtt CompletionQueue.Arn
     DependsOn:
       - ContentStorageToCompletionQueuePermission
@@ -539,6 +894,15 @@ Resources:
             Condition:
               Bool:
                 aws:SecureTransport: 'false'
+          - Sid: AllowCloudFrontServicePrincipal
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${ContentStorage.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${ContentDistribution}
   # Metadata storage
   MetadataStorage:
     Type: AWS::DynamoDB::Table
@@ -588,8 +952,11 @@ Resources:
     Properties:
       QueueName: !Sub ${AppId}-UploadEventQueue
       MessageRetentionPeriod: 345600
-      VisibilityTimeout: 120
-      DelaySeconds: 15
+      VisibilityTimeout: 30
+      DelaySeconds: 2
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt UploadDLQ.Arn
+        maxReceiveCount: 1
   TransportStorageToUploadEventQueuePermission:
     Type: AWS::SQS::QueuePolicy
     Properties:
@@ -611,8 +978,11 @@ Resources:
     Properties:
       QueueName: !Sub ${AppId}-CompletionQueue
       MessageRetentionPeriod: 345600
-      VisibilityTimeout: 120
-      DelaySeconds: 15
+      VisibilityTimeout: 60
+      DelaySeconds: 5
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt CompletionDLQ.Arn
+        maxReceiveCount: 4
   ContentStorageToCompletionQueuePermission:
     Type: AWS::SQS::QueuePolicy
     Properties:
@@ -634,129 +1004,43 @@ Resources:
     Properties:
       QueueName: !Sub ${AppId}-TaskQueue
       MessageRetentionPeriod: 345600
+      VisibilityTimeout: 30
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt TaskDLQ.Arn
+        maxReceiveCount: 5
+  ValidationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AppId}-ValidationQueue
+      MessageRetentionPeriod: 345600
+      VisibilityTimeout: 30
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ValidationDLQ.Arn
+        maxReceiveCount: 2
+  TaskDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AppId}-TaskDLQ
+      MessageRetentionPeriod: 345600
       VisibilityTimeout: 60
-      DelaySeconds: 5
-  # -----------------------------------------------------------------------------------------------------------------------
-  # NETWORK
-  # -----------------------------------------------------------------------------------------------------------------------
-  # VPC
-  WorkerVPC:
-    Type: AWS::EC2::VPC
+  UploadDLQ:
+    Type: AWS::SQS::Queue
     Properties:
-      CidrBlock: 10.0.0.0/16
-      EnableDnsHostnames: true
-      EnableDnsSupport: true
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref AppId
-  # Internet Gateway
-  InternetGateway:
-    Type: AWS::EC2::InternetGateway
+      QueueName: !Sub ${AppId}-UploadDLQ
+      MessageRetentionPeriod: 345600
+      VisibilityTimeout: 60
+  CompletionDLQ:
+    Type: AWS::SQS::Queue
     Properties:
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref AppId
-
-  AttachGateway:
-    Type: AWS::EC2::VPCGatewayAttachment
+      QueueName: !Sub ${AppId}-CompletionDLQ
+      MessageRetentionPeriod: 345600
+      VisibilityTimeout: 60
+  ValidationDLQ:
+    Type: AWS::SQS::Queue
     Properties:
-      VpcId: !Ref WorkerVPC
-      InternetGatewayId: !Ref InternetGateway
-  # Public Subnet
-  PublicSubnet:
-    Type: AWS::EC2::Subnet
-    DependsOn: WorkerVPC
-    Properties:
-      VpcId: !Ref WorkerVPC
-      CidrBlock: 10.0.1.0/24
-      AvailabilityZone: !Select
-        - 0
-        - !GetAZs ''
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref AppId
-  # Route Table
-  PublicRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref WorkerVPC
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref AppId
-
-  PublicRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref InternetGateway
-  PublicSubnetRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnet
-      RouteTableId: !Ref PublicRouteTable
-
-  # Security Group
-  WorkerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for Fargate workers
-      VpcId: !Ref WorkerVPC
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
-          CidrIp: 0.0.0.0/0
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref AppId
-  # VPC Endpoints
-  S3Endpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
-      VpcId: !Ref WorkerVPC
-      RouteTableIds:
-        - !Ref PublicRouteTable
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal: '*'
-            Action:
-              - s3:GetObject
-              - s3:PutObject
-            Resource:
-              - !Sub arn:aws:s3:::${TransportStorage}/*
-              - !Sub arn:aws:s3:::${ContentStorage}/*
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref AppId
-  DynamoDBEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
-      VpcId: !Ref WorkerVPC
-      RouteTableIds:
-        - !Ref PublicRouteTable
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref AppId
+      QueueName: !Sub ${AppId}-ValidationDLQ
+      MessageRetentionPeriod: 345600
+      VisibilityTimeout: 60
   # -----------------------------------------------------------------------------------------------------------------------
   # COMPUTE
   # -----------------------------------------------------------------------------------------------------------------------
@@ -786,7 +1070,7 @@ Resources:
       RepositoryName: !Sub ${AppId}-worker
       ImageScanningConfiguration:
         ScanOnPush: true
-      ImageTagMutability: IMMUTABLE
+      ImageTagMutability: MUTABLE
       EncryptionConfiguration:
         EncryptionType: AES256
       LifecyclePolicy:
@@ -813,6 +1097,9 @@ Resources:
           - Sid: AllowPullPush
             Effect: Allow
             Principal:
+              AWS:
+                - !GetAtt TaskExecutionRole.Arn
+                - !GetAtt ProcessorTaskRole.Arn
               Service:
                 - ecs-tasks.amazonaws.com
                 - ecr.amazonaws.com
@@ -824,7 +1111,6 @@ Resources:
               - ecr:InitiateLayerUpload
               - ecr:UploadLayerPart
               - ecr:CompleteLayerUpload
-
   ProcessorTaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -919,17 +1205,20 @@ Resources:
       RequiresCompatibilities:
         - FARGATE
       NetworkMode: awsvpc
-      Cpu: '8192'
-      Memory: '16384'
+      Cpu: '16384'
+      Memory: '32768'
       ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
       TaskRoleArn: !GetAtt ProcessorTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
       ContainerDefinitions:
         - Name: processor
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${WorkerRepository}:latest
           Essential: true
-          Memory: 16384
+          Memory: 30720
           MemoryReservation: 15360
-          Cpu: 8192
+          Cpu: 16384
           Environment:
             - Name: AWS_REGION
               Value: !Ref AWS::Region
@@ -941,17 +1230,10 @@ Resources:
               Value: !Ref ContentStorage
             - Name: METADATA_TABLE
               Value: !Ref MetadataStorage
-            - Name: FFMPEG_THREADS
-              Value: '8'
-            - Name: FFMPEG_THREAD_QUEUE_SIZE
-              Value: '512'
-          HealthCheck:
-            Command:
-              - CMD-SHELL
-              - exit 0
-            Interval: 30
-            Timeout: 5
-            Retries: 3
+            - Name: FOOTAGE_DIR
+              Value: /tmp/footage
+            - Name: COMPLETION_TRIGGER
+              Value: !Ref CompletionTrigger
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -966,38 +1248,183 @@ Resources:
         - Key: Project
           Value: !Ref AppId
   # -----------------------------------------------------------------------------------------------------------------------
-  # Metadata
+  # CloudFront
   # -----------------------------------------------------------------------------------------------------------------------
+  CloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-OAC
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  ContentDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - DomainName: !GetAtt ContentStorage.RegionalDomainName
+            Id: S3Origin
+            S3OriginConfig: {}
+            OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+            OriginShield:
+              Enabled: true
+              OriginShieldRegion: ap-south-1
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: whitelist
+            Locations:
+              - IN
+              - US
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: !Ref OneHourCachePolicy
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf
+          ResponseHeadersPolicyId: !Ref CORSPolicy
+        IPV6Enabled: true
+        HttpVersion: http2
+        PriceClass: PriceClass_200
+
+  CORSPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub ${AWS::StackName}-CORS-Policy
+        CorsConfig:
+          AccessControlAllowCredentials: false
+          AccessControlAllowOrigins:
+            Items:
+              - !Ref AllowedOrigin
+          AccessControlAllowMethods:
+            Items:
+              - GET
+              - HEAD
+              - OPTIONS
+          AccessControlAllowHeaders:
+            Items:
+              - '*'
+          AccessControlExposeHeaders:
+            Items:
+              - '*'
+          AccessControlMaxAgeSec: 600
+          OriginOverride: false
+        SecurityHeadersConfig:
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: default-src 'none'; img-src 'self'; media-src 'self'
+            Override: true
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Preload: true
+            Override: true
+  OneHourCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: OneHourCachePolicy
+        DefaultTTL: 3600
+        MinTTL: 0
+        MaxTTL: 3600
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          HeadersConfig:
+            HeaderBehavior: none
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
 Metadata:
   AWS::Composer::Groups:
     Group:
-      Label: Processing Pipeline
+      Label: Request Handlers
       Members:
-        - ContentStorage
-        - TransportStorage
-        - CompletionQueue
-        - UploadEventQueue
-        - CompletionHandler
-        - EventHandler
+        - IdentityHandler
+        - UploadHandler
+        - ContentRequestHandler
+        - BackendFuncLogGroup
+    Group4:
+      Label: PROCESSING
+      Members:
+        - TaskExecutionRole
         - TaskQueue
         - TaskHandler
-        - MetadataStorage
-    Group3:
-      Label: Network Stack
-      Members:
-        - WorkerSecurityGroup
-        - PublicSubnet
-        - S3Endpoint
-        - DynamoDBEndpoint
-    Group4:
-      Label: Workers
-      Members:
+        - TaskDLQ
+        - TaskDLQHandler
         - WorkerCluster
         - ProcessorTaskDefinition
-        - WorkerRepository
+    Group5:
+      Label: Processing Pipeline
+      Members:
+        - Group8
+        - Group9
+        - Group10
+        - Group13
+        - MetadataStorage
     Group2:
-      Label: Authentication & Authorization
+      Label: Auth
       Members:
         - UserPoolClient
         - AuthCache
         - UserPool
+    Group6:
+      Label: APPLICATION
+      Members:
+        - Group
+        - Group2
+        - Group12
+        - Group7
+    Group8:
+      Label: UPLOAD EVENT
+      Members:
+        - UploadEventQueue
+        - EventHandler
+        - UploadDLQ
+    Group9:
+      Label: VALIDATION
+      Members:
+        - ResourceLayer
+        - ValidationHandler
+        - ValidationQueue
+        - ValidationDLQ
+    Group10:
+      Label: COMPLETION EVENT
+      Members:
+        - CompletionHandler
+        - CompletionQueue
+        - CompletionDLQ
+    Group12:
+      Label: APIS
+      Members:
+        - AuthAPIs
+        - UserActionsAPIs
+    Group13:
+      Label: DLQ HANDLERS
+      Members:
+        - ValidationDLQHandler
+        - EventDLQHandler
+        - CompletionDLQHandler
+    Group3:
+      Label: CDN
+      Members:
+        - ContentDistribution
+        - CloudFrontOriginAccessControl
+        - CORSPolicy
+        - OneHourCachePolicy
+    Group7:
+      Label: STORAGE
+      Members:
+        - TransportStorage
+        - ContentStorage
+        - ContentStorageToCompletionQueuePermission
+        - TransportStorageToUploadEventQueuePermission

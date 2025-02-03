@@ -1,30 +1,75 @@
 version: 0.2
+
 phases:
   install:
     runtime-versions:
       nodejs: 18
+      golang: 1.21
     commands:
-      - cd backend
-      - echo "Installing project dependencies..."
+      - mkdir -p $CODEBUILD_SRC_DIR/ffmpeg-shared
+      - curl -s -O https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-arm64-static.tar.xz
+      - tar xf ffmpeg-git-arm64-static.tar.xz -C $CODEBUILD_SRC_DIR/ffmpeg-shared
+      - FFMPEG_FOLDER=$(ls $CODEBUILD_SRC_DIR/ffmpeg-shared)
+      - echo "FFmpeg folder is ${FFMPEG_FOLDER}"
+      
+      - cd $CODEBUILD_SRC_DIR/backend/nodejs
       - npm install --quiet
+      - cd src/layers/resource-layer/nodejs && npm install --quiet && cd ../../../..
+      
+      - mkdir -p src/layers/resource-layer/ffmpeg
+      - cp $CODEBUILD_SRC_DIR/ffmpeg-shared/${FFMPEG_FOLDER}/ffmpeg src/layers/resource-layer/ffmpeg/
+      - cp $CODEBUILD_SRC_DIR/ffmpeg-shared/${FFMPEG_FOLDER}/ffprobe src/layers/resource-layer/ffmpeg/
+      - chmod +x src/layers/resource-layer/ffmpeg/*
+      
+      - mkdir -p $CODEBUILD_SRC_DIR/backend/workers/processor/ffmpeg
+      - cp $CODEBUILD_SRC_DIR/ffmpeg-shared/${FFMPEG_FOLDER}/ffmpeg $CODEBUILD_SRC_DIR/backend/workers/processor/ffmpeg/
+      - cp $CODEBUILD_SRC_DIR/ffmpeg-shared/${FFMPEG_FOLDER}/ffprobe $CODEBUILD_SRC_DIR/backend/workers/processor/ffmpeg/
+      
+      - cd src/layers/resource-layer
+      - zip -q -r ../../../resource-layer.zip nodejs ffmpeg
+      - cd ../../../
+      
+      - rm -rf $CODEBUILD_SRC_DIR/ffmpeg-shared ffmpeg-git-arm64-static.tar.xz
+      
+  pre_build:
+    commands:
+      - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://127.0.0.1:2375 --storage-driver=overlay2 &
+      - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
+      - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
       
   build:
     commands:
-      - echo "Starting build..."
+      - cd $CODEBUILD_SRC_DIR/backend/nodejs  # Fixed path
       - npm run build
-      - cp ../infrastructure/backend.yml .
-      - aws cloudformation package --template-file backend.yml --s3-bucket $S3_BUCKET --output-template-file template-export.yml
+      - cp ../../infrastructure/backend.yml .
+      - aws cloudformation package --template-file backend.yml --s3-bucket ${S3_BUCKET} --output-template-file template-export.yml
+      - cd ..
+      
+      - cd workers/processor
+      - export BUILD_TIME=$(date +%Y%m%d%H%M%S)
+      - docker build -t ${ECR_REPOSITORY}:${BUILD_TIME} .
+      - docker tag ${ECR_REPOSITORY}:${BUILD_TIME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_TIME}
+      - docker tag ${ECR_REPOSITORY}:${BUILD_TIME} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
+      - cd ../..
       
   post_build:
     commands:
+      - cd $CODEBUILD_SRC_DIR/backend
+      - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_TIME}
+      - docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
+
+      - cd nodejs
       - rm -rf node_modules
-      - npm prune --omit=dev --quiet
+      - rm -rf src/layers/resource-layer/opt/ffmpeg/*
       - rm -rf dist/workers/*
+      - npm prune --omit=dev --quiet
+      - cd ..
 
 artifacts:
   files:
-    - template-export.yml
-    - dist/**/*
-    - package.json
-    - package-lock.json
-  base-directory:  backend
+    - nodejs/template-export.yml
+    - nodejs/dist/**/*
+    - nodejs/package.json
+    - nodejs/package-lock.json
+    - nodejs/resource-layer.zip
+  base-directory: backend
