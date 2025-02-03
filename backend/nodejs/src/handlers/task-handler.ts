@@ -27,35 +27,57 @@ WorkerService.initialize(ecsConfig);
 
 export const taskHandler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
     const batchItemFailures: SQSBatchItemFailure[] = [];
-    for (const record of event.Records) {
-        const task: Task = JSON.parse(record.body);
-        const owner: KeyOwner = { userId: task.userId, assetId: task.assetId };
+    const taskLimit = parseInt(process.env.FARGATE_TASK_LIMIT!, 10);
+    
+    const tasks = event.Records.map(record => ({
+        task: JSON.parse(record.body) as Task,
+        messageId: record.messageId
+    }));
+
+    for (let i = 0; i < tasks.length; i += taskLimit) {
+        const taskBatch = tasks.slice(i, i + taskLimit);
+        const batchTasks = taskBatch.map(t => t.task);
+        
         try {
             const canJobBeAssignedResult = await WorkerService.canJobBeAssigned();
 
-            if (canJobBeAssignedResult){
-                const assignJobResult = await WorkerService.assignJob(task);
-                if (assignJobResult){
-                    await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.COMPLETED);
-                    await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'endTime', new Date().toISOString());
+            if (canJobBeAssignedResult) {
+                const assignJobResult = await WorkerService.assignJob(batchTasks);
+                
+                if (assignJobResult) {
+                    await Promise.all(taskBatch.map(async ({ task }) => {
+                        const owner: KeyOwner = { userId: task.userId, assetId: task.assetId };
+                        return Promise.all([
+                            MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.COMPLETED),
+                            MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'endTime', new Date().toISOString())
+                        ]);
+                    }));
                 } else {
-                    await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.HOLD);
+                    await Promise.all(taskBatch.map(async ({ task, messageId }) => {
+                        const owner: KeyOwner = { userId: task.userId, assetId: task.assetId };
+                        batchItemFailures.push({ itemIdentifier: messageId });
+                        return MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.HOLD);
+                    }));
                 }
             } else {
-                await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.HOLD);
+                await Promise.all(taskBatch.map(async ({ task, messageId }) => {
+                    const owner: KeyOwner = { userId: task.userId, assetId: task.assetId };
+                    batchItemFailures.push({ itemIdentifier: messageId });
+                    return MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.HOLD);
+                }));
             }
-
         } catch (error) {
             const errorResponse = exceptionHandlerFunction(error);
-            batchItemFailures.push({
-                itemIdentifier: record.messageId,
-            });
-            await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.HOLD);
-            await MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'error', errorResponse.message);
+            await Promise.all(taskBatch.map(async ({ task, messageId }) => {
+                const owner: KeyOwner = { userId: task.userId, assetId: task.assetId };
+                batchItemFailures.push({ itemIdentifier: messageId });
+                return Promise.all([
+                    MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'status', Progress.HOLD),
+                    MetadataService.updateProgressField(owner, ProcessingStage.Accepted, 'error', errorResponse.message)
+                ]);
+            }));
         }
     }
+
     return { batchItemFailures };
 };
-
-// use updatedAt
-// need to ensure if task is not assigned its dealt well.

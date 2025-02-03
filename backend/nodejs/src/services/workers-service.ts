@@ -43,8 +43,7 @@ const canJobBeAssigned = async ():Promise<boolean> => {
     return false;
 };
 
-const assignJob = async (task: Task): Promise<boolean> => {
-
+const assignJob = async (tasks: Task[]): Promise<boolean> => {
     try {
         const command = new RunTaskCommand({
             cluster: ecsConfig.cluster,
@@ -73,24 +72,14 @@ const assignJob = async (task: Task): Promise<boolean> => {
                         name: 'processor',
                         environment: [
                             {
-                                name: 'TASK_ID',
-                                value: task.taskId,
-                            },
-                            {
-                                name: 'USER_ID',
-                                value: task.userId,
-                            },
-                            {
-                                name: 'ASSET_ID',
-                                value: task.assetId,
-                            },
-                            {
-                                name: 'INPUT_KEY',
-                                value: task.inputKey,
-                            },
-                            {
-                                name: 'OUTPUT_KEY',
-                                value: task.outputKey,
+                                name: 'BATCH_TASKS',
+                                value: JSON.stringify(tasks.map(task => ({
+                                    taskId: task.taskId,
+                                    userId: task.userId,
+                                    assetId: task.assetId,
+                                    inputKey: task.inputKey,
+                                    outputKey: task.outputKey
+                                }))),
                             },
                         ],
                     },
@@ -111,4 +100,3 @@ export const  WorkerService = {
     canJobBeAssigned,
     assignJob,
 };
-
