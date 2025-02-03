@@ -6,6 +6,7 @@ import { DbConfig } from '../types/db.types';
 import { Request, Response } from '../types/request-response.types';
 import { Fault, CustomError, ErrorName, exceptionHandlerFunction } from '../utils/error-handling';
 import { ValidationField, ValidationResponse, RequestValidator } from '../utils/request-validator';
+import { request } from 'node:http';
 
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN!,
@@ -78,7 +79,33 @@ const getAsset = async(request:Request): Promise<Response> => {
         data: record,
     };
 };
+const getAllAssetsProgress = async(request:Request): Promise<Response> => {
+    const validationResult:ValidationResponse = RequestValidator.validate(request, [
+        ValidationField.RequestHeaders,
+        ValidationField.AccessToken,
+    ]);
+    if (!validationResult.success){
+        throw new CustomError(ErrorName.ValidationError, validationResult.message, 400, Fault.CLIENT, true);
+    }
 
+    const assetId = request.parameters?.assetId;
+    if (!assetId) {
+        throw new CustomError(
+            ErrorName.ValidationError, 'Asset ID is required', 400, Fault.CLIENT, true);
+    }
+
+    const token = request.headers?.['x-access-token'];
+    const accessToken = token?.slice(7)!;
+    const userId = await IdentityService.getUser(accessToken);
+
+    const progress = await MetadataService.getAllAssetsProgress(userId);
+
+    return {
+        success: true,
+        message: 'Progress Report!',
+        data: progress,
+    };
+};
 interface RoutePattern {
     pattern: RegExp;
     handler: (request: Request) => Promise<Response>;
@@ -92,6 +119,10 @@ const ROUTES: Record<string, RoutePattern> = {
     ASSET: {
         pattern: /^\/v1\/user\/assets\/[^/]+$/,
         handler: getAsset,
+    },
+    ASSET_PROGRESS: {
+        pattern: /^\/v1\/user\/assets\/progress$/,
+        handler: getAllAssetsProgress,
     },
 } as const;
 

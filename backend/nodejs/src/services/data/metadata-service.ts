@@ -34,6 +34,7 @@ export enum ProcessingStage {
     UploadTranscodedFootage = 'uploadTranscodedFootage',
     PostProcessingValidation = 'postProcessingValidation',
     Completion = 'completion',
+    Finished = 'Finished'
 }
 
 let dbConfig:DbConfig;
@@ -267,6 +268,20 @@ const getAllAssets = async (userId: string): Promise<Record<string, any>[]> => {
     return response.Items ? response.Items.map(item => unmarshall(item)) : [];
 };
 
+const getAllAssetsProgress = async (userId: string): Promise<Record<string, any>[]> => {
+    const command = new QueryCommand({
+        TableName: dbConfig.table,
+        KeyConditionExpression: 'userId = :userId',
+        ProjectionExpression: 'createdAt, updatedAt, progress',
+        ExpressionAttributeValues: {
+            ':userId': { S: userId }
+        },
+    });
+
+    const response = await dbClient.send(command);
+    return response.Items ? response.Items.map(item => unmarshall(item)) : [];
+};
+
 const getAsset = async (userId: string, assetId: string): Promise<Record<string, any> | null> => {
     const command = new GetItemCommand({
         TableName: dbConfig.table,
@@ -292,4 +307,5 @@ export const MetadataService = {
     getFileCount,
     getAllAssets,
     getAsset,
+    getAllAssetsProgress,
 };
