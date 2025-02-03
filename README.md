@@ -1,5 +1,13 @@
 # ShortRelay
-![alt text](./infrastructure/asset-processing-flow.png)
+ShortRelay is a serverless video processing pipeline built on AWS. It uses event-driven architecture and loosely coupled components to reliably and efficiently process and distribute short-form videos.
+
+Tech Stack:
+- Built entirely on AWS using CI/CD with CodePipeline and CloudFormation ([CI/CD Details](./infrastructure/README.md))
+- Backend components (Lambdas) use TypeScript, Node.js, and AWS SDK v3
+- Workers are built with Go, utilizing FFmpeg, FFprobe, and AWS SDK v2
+- Frontend is developed using Next.js
+  ***
+![alt text](./infrastructure/docs/asset-processing-flow.png)
 
 ## APIs
 ### Auth APIs
