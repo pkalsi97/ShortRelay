@@ -272,7 +272,7 @@ const getAllAssetsProgress = async (userId: string): Promise<Record<string, any>
     const command = new QueryCommand({
         TableName: dbConfig.table,
         KeyConditionExpression: 'userId = :userId',
-        ProjectionExpression: 'createdAt, updatedAt, progress, assetId',
+        ProjectionExpression: 'createdAt, updatedAt, progress, assetId, hasCriticalFailure',
         ExpressionAttributeValues: {
             ':userId': { S: userId }
         },
