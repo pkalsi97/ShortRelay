@@ -261,15 +261,6 @@ Resources:
                 type: aws_proxy
                 uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ContentRequestHandler.Arn}/invocations
               responses: {}
-          /v1/user/assets/{assetId}:
-            get:
-              security:
-                - Cognito-Auth: []
-              x-amazon-apigateway-integration:
-                httpMethod: POST
-                type: aws_proxy
-                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ContentRequestHandler.Arn}/invocations
-              responses: {}
           /v1/user/assets/progress:
             get:
               security:
@@ -278,6 +269,17 @@ Resources:
                 httpMethod: POST
                 type: aws_proxy
                 uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ContentRequestHandler.Arn}/invocations
+              responses: {}
+          /v1/user/asset/{assetId}:
+            get:
+              parameters:
+                - name: assetId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+              security:
+                - Cognito-Auth: []
               responses: {}
 
   # -----------------------------------------------------------------------------------------------------------------------
@@ -632,16 +634,16 @@ Resources:
             Path: /v1/user/assets/all
             Method: GET
             RestApiId: !Ref UserActionsAPIs
-        UserActionsAPIsGETv1userassetsassetId:
-          Type: Api
-          Properties:
-            Path: /v1/user/assets/{assetId}
-            Method: GET
-            RestApiId: !Ref UserActionsAPIs
         UserActionsAPIsGETv1userassetsprogress:
           Type: Api
           Properties:
             Path: /v1/user/assets/progress
+            Method: GET
+            RestApiId: !Ref UserActionsAPIs
+        UserActionsAPIsGETv1userassetassetId:
+          Type: Api
+          Properties:
+            Path: /v1/user/asset/{assetId}
             Method: GET
             RestApiId: !Ref UserActionsAPIs
   EventDLQHandler:

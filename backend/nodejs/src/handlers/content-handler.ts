@@ -116,13 +116,13 @@ const ROUTES: Record<string, RoutePattern> = {
         pattern: /^\/v1\/user\/assets\/all$/,
         handler: getAllAssets,
     },
-    ASSET: {
-        pattern: /^\/v1\/user\/assets\/[^/]+$/,
-        handler: getAsset,
-    },
     ASSET_PROGRESS: {
         pattern: /^\/v1\/user\/assets\/progress$/,
         handler: getAllAssetsProgress,
+    },
+    ASSET: {
+        pattern: /^\/v1\/user\/asset\/[^/]+$/,
+        handler: getAsset,
     },
 } as const;
 
