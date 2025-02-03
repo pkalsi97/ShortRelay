@@ -479,7 +479,7 @@ Resources:
           Properties:
             Queue: !GetAtt TaskQueue.Arn
             BatchSize: 16
-            MaximumBatchingWindowInSeconds: 10
+            MaximumBatchingWindowInSeconds: 30
       Environment:
         Variables:
           METADATASTORAGE_TABLE_NAME: !Ref MetadataStorage
