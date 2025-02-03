@@ -1,6 +1,7 @@
 # ShortRelay
 ![alt text](./infrastructure/asset-processing-flow.png)
 
+## APIs
 ### Auth APIs
 The Auth APIs include the following endpoints for managing user authentication and identity:
 
@@ -63,6 +64,22 @@ The `TransportStorage` S3 bucket contains the raw footage uploaded by users. S3 
     - If validation succeeds:
         - Creates a video processing task with the metadata
         - Sends the processing task to the `TaskQueue` SQS queue
+
+## Task Execution Pipeline
+1. **Task Queuing**: 
+   * Tasks are added to the `TaskQueue` SQS queue. 
+   * This queue acts as a buffer, holding tasks until they're ready to be processed.
+2. **Task Handler**:
+   * The `TaskHandler` Lambda function polls batch of task from `TaskQueue`.
+   * Check Current State of workers and Assigns transcoding jobs to Fargate worker based on availability.
+3. **Workers**:
+   * When Assigned a batch job, Worker sequentially transcodes and uploads footage to `Content Storage`.
+   * Worker also updates status of each step in `Metadata Storage`.
+   * It also uploads a special file `completion.json' which is used by Completion Handler to do Post Processing Validation.
+4. **Error Handling with Dead Letter Queue**:
+   * If a task in the `TaskQueue` fails to be processed for any reason, it's sent to the `TaskDLQ`.
+   * The DLQ acts as a safety net, preventing failed tasks from being lost or blocking the main queue.
+   * The `TaskDLQHandler` Lambda is responsible for handling these failed tasks.
 
 ## Completion Event
 1. Processed footage is uploaded to `Content Storage` by Fargate Worker.
