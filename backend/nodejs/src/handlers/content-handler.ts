@@ -121,7 +121,7 @@ const ROUTES: Record<string, RoutePattern> = {
         handler: getAllAssetsProgress,
     },
     ASSET: {
-        pattern: /^\/v1\/user\/asset\/[^/]+$/,
+        pattern: /^\/v1\/user\/asset\/[a-zA-Z0-9-]+$/, // More specific for assetId
         handler: getAsset,
     },
 } as const;
