@@ -10,21 +10,22 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
+    "@types/video.js": "^7.3.58",
+    "@videojs/http-streaming": "^3.16.2",
     "axios": "^1.7.9",
     "daisyui": "^4.12.23",
     "date-fns": "^4.1.0",
     "hls.js": "^1.5.20",
     "next": "15.1.6",
+    "plyr": "^3.7.8",
+    "plyr-react": "^5.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-hot-toast": "^2.5.1",
-    "react-player": "^2.16.0",
-    "video.js": "^8.21.0",
-    "videojs-contrib-quality-levels": "^4.1.0",
-    "videojs-http-source-selector": "^1.1.6"
+    "react-hot-toast": "^2.5.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@types/hls.js": "^0.13.3",
     "@types/node": "^20.17.16",
     "@types/react": "^19",
     "@types/react-dom": "^19",

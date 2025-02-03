@@ -175,11 +175,9 @@ export const AssetDetailsModal = ({ isOpen, onClose, assetId }: AssetDetailsModa
                     </div>
                     </div>
                 </div>
-              {/* Video Player */}
-              {asset.metadata?.distribution?.streaming?.hls && (
-                <VideoPlayer src={asset.metadata.distribution.streaming.hls} />
-              )}
-
+                {asset.metadata?.distribution?.streaming && (
+                  <VideoPlayer streaming={asset.metadata.distribution.streaming} />
+                )}
               {/* Links Section */}
               {asset.metadata?.distribution && (
                 <div>
