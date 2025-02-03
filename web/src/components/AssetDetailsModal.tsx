@@ -85,7 +85,7 @@ export const AssetDetailsModal = ({ isOpen, onClose, assetId }: AssetDetailsModa
         }
 
         const response = await userApi.get<DetailedApiResponse>(
-          `/v1/user/assets/${assetId}`,
+          `/v1/user/asset/${assetId}`,
           {
             headers: {
               'authorization': `Bearer ${idToken}`,
