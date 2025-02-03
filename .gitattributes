@@ -1,0 +1,6 @@
+# .gitattributes
+*.go linguist-detectable=true
+*.ts linguist-detectable=true
+package-lock.json linguist-generated=true
+*.js linguist-generated=false
+*.css linguist-generated=false
