@@ -1,3 +1,2 @@
 # ShortRelay
-
-### Under progress
+![alt text](./infrastructure/asset-processing-flow.png)

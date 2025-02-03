@@ -1,4 +1,4 @@
-![alt text](./backend.png)
+![alt text](./infra.png)
 
 # ShortRelay Backend
 
