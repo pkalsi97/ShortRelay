@@ -128,20 +128,6 @@ const validateBasics = async (filePath: string): Promise<BasicValidationResult> 
 const validateContent = async (filePath:string): Promise <ContentValidationResult> => {
 
     const basic = await validateBasics(filePath);
-    if (!basic.isValid) {
-        return {
-            success: false,
-            error: 'Invalid format or codecs',
-            basic,
-            stream: {
-                hasVideoStream: false,
-                hasAudioStream: false,
-                isPlayable: false,
-                hasCorruptFrames: false,
-            },
-        };
-    };
-
     const stream: StreamValidationResult = await validateStreams(filePath);
 
     const success = basic.isValid &&
