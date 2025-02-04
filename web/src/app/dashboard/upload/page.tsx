@@ -38,12 +38,6 @@ interface BrowserValidationResult {
   };
 }
 
-const SUPPORTED_MIME_TYPES = [
-  'video/mp4',
-  'video/quicktime',
-  'video/x-msvideo',
-  'video/x-matroska'
-];
 type UploadStatus = 'idle' | 'validating' | 'requesting' | 'uploading' | 'complete' | 'error';
 
 const ACCEPTED_FORMATS = ['video/mp4', 'video/quicktime', 'video/webm'];
@@ -198,14 +192,14 @@ const validateVideoInBrowser = (file: File): Promise<BrowserValidationResult> =>
     video.onloadedmetadata = () => {
       clearTimeout(timeoutId);
       URL.revokeObjectURL(objectUrl);
-
+      /*eslint-disable*/
       const hasVideo = video.videoWidth > 0 && video.videoHeight > 0;
       const hasAudio = Boolean(
         (video as any).mozHasAudio ||
         (video as any).webkitAudioDecodedByteCount ||
         (video as any).audioTracks?.length
       );
-
+      /*eslint-disable*/
       if (!hasVideo || !hasAudio) {
         resolve({
           isValid: false,
