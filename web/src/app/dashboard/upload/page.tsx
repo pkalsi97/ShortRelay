@@ -274,7 +274,7 @@ return (
                       Started {format(new Date(item.createdAt), 'MMM dd, HH:mm:ss')}
                     </p>
                   </div>
-                  <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                  <span className={`px-2 py-1 rounded-full text-sm font-medium ${
                     isFinished ? 'bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-cyan-400' : 
                     isFailed ? 'bg-red-500/20 text-red-400' :
                     'bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-purple-400'
