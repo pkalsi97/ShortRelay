@@ -136,7 +136,7 @@ export const validationHandler = async(messages:SQSEvent):Promise<SQSBatchRespon
                         {
                             status: Progress.FAILED,
                             startTime: new Date().toISOString(),
-                            error: 'Validation Failed, Invalid Content',
+                            error: `Error: ${contentValidationResult.error}`,
                         },
                     );
                     await MetadataService.markCriticalFailure(owner, true);

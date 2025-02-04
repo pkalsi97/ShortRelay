@@ -22,13 +22,34 @@ interface UploadResponse {
   };
 }
 
+interface UploadResponse {
+  uploadUrl: string;
+  fileId: string;
+}
+interface BrowserValidationResult {
+  isValid: boolean;
+  message: string;
+  details?: {
+    duration: number;
+    videoWidth: number;
+    videoHeight: number;
+    hasVideo: boolean;
+    hasAudio: boolean;
+  };
+}
 
+const SUPPORTED_MIME_TYPES = [
+  'video/mp4',
+  'video/quicktime',
+  'video/x-msvideo',
+  'video/x-matroska'
+];
 type UploadStatus = 'idle' | 'validating' | 'requesting' | 'uploading' | 'complete' | 'error';
 
 const ACCEPTED_FORMATS = ['video/mp4', 'video/quicktime', 'video/webm'];
 const MAX_FILE_SIZE_MB = 120;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-
+const MAX_DURATION = 600;
 const STATUS_MESSAGES = {
   idle: '',
   validating: 'Validating file...',
@@ -136,6 +157,102 @@ interface ProgressResponse {
   }>;
 }
 
+const validateVideoInBrowser = (file: File): Promise<BrowserValidationResult> => {
+  return new Promise((resolve) => {
+    if (!ACCEPTED_FORMATS.includes(file.type)) {
+      resolve({
+        isValid: false,
+        message: 'Unsupported video format. Please use MP4, MOV, or WebM'
+      });
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      resolve({
+        isValid: false,
+        message: `File size must be less than ${MAX_FILE_SIZE_MB}MB`
+      });
+      return;
+    }
+
+    const video = document.createElement('video');
+    const objectUrl = URL.createObjectURL(file);
+
+    const timeoutId = setTimeout(() => {
+      URL.revokeObjectURL(objectUrl);
+      resolve({
+        isValid: false,
+        message: 'Video loading timed out'
+      });
+    }, 10000);
+
+    video.onerror = () => {
+      clearTimeout(timeoutId);
+      URL.revokeObjectURL(objectUrl);
+      resolve({
+        isValid: false,
+        message: 'Error loading video'
+      });
+    };
+
+    video.onloadedmetadata = () => {
+      clearTimeout(timeoutId);
+      URL.revokeObjectURL(objectUrl);
+
+      const hasVideo = video.videoWidth > 0 && video.videoHeight > 0;
+      const hasAudio = Boolean(
+        (video as any).mozHasAudio ||
+        (video as any).webkitAudioDecodedByteCount ||
+        (video as any).audioTracks?.length
+      );
+
+      if (!hasVideo || !hasAudio) {
+        resolve({
+          isValid: false,
+          message: !hasVideo ? 'No video track found' : 'No audio track found',
+          details: {
+            duration: video.duration,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+            hasVideo,
+            hasAudio
+          }
+        });
+        return;
+      }
+
+      if (video.duration > MAX_DURATION || video.duration <= 0) {
+        resolve({
+          isValid: false,
+          message: 'Video duration must be between 1 second and 1 hour',
+          details: {
+            duration: video.duration,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+            hasVideo,
+            hasAudio
+          }
+        });
+        return;
+      }
+
+      resolve({
+        isValid: true,
+        message: 'Valid video file',
+        details: {
+          duration: video.duration,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+          hasVideo,
+          hasAudio
+        }
+      });
+    };
+
+    video.preload = 'metadata';
+    video.src = objectUrl;
+  });
+};
 
 const ProgressSection = () => {
 const [progressData, setProgressData] = useState<ProgressResponse['data']>([]);
@@ -329,31 +446,11 @@ export default function Upload() {
     }
   };
 
-  const validateFile = (file: File): { isValid: boolean; message: string } => {
-    if (!file.type.startsWith('video/')) {
-      return {
-        isValid: false,
-        message: 'Please upload a video file'
-      };
-    }
-
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      return {
-        isValid: false,
-        message: `File size must be less than ${MAX_FILE_SIZE_MB}MB`
-      };
-    }
-
-    if (!ACCEPTED_FORMATS.includes(file.type)) {
-      return {
-        isValid: false,
-        message: `Supported formats: ${ACCEPTED_FORMATS.map(format => format.split('/')[1]).join(', ')}`
-      };
-    }
-
+  const validateFile = async (file: File): Promise<{ isValid: boolean; message: string }> => {
+    const validation = await validateVideoInBrowser(file);
     return {
-      isValid: true,
-      message: 'File validation successful!'
+      isValid: validation.isValid,
+      message: validation.message
     };
   };
 
@@ -397,7 +494,7 @@ export default function Upload() {
     }
 
     setUploadStatus('validating');
-    const validation = validateFile(selectedFile);
+    const validation = await validateFile(selectedFile);
     if (!validation.isValid) {
       toast.error(validation.message);
       setUploadStatus('error');
