@@ -3,8 +3,6 @@
 # ShortRelay Backend
 
 This project implements a serverless architecture for short video transcoding and delivery using AWS services, defined with the AWS Serverless Application Model (SAM).
-### [Cloud Formation Template used in Continuous Deployment](./infrastructure/backend.yml)
-### [CodePipeline created by AWS](./infrastructure/docs/pipeline.png)
 
 ## Overview
 
